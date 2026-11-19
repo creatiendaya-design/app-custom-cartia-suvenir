@@ -7,6 +7,10 @@ export default defineConfig({
       include: [
         "app/lib/domain.ts",
         "app/lib/repository.server.ts",
+        "app/lib/storage-sqlite.server.ts",
+        "app/lib/storage-supabase.server.ts",
+        "app/lib/unit-of-work.server.ts",
+        "app/lib/app-url.server.ts",
         "app/lib/export.server.ts",
         "app/lib/access.server.ts",
       ],

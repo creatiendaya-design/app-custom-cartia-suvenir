@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: souvenir-made-personalizer
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOCAL_DEMO
+        value: "false"
+      - key: HOST
+        value: 0.0.0.0
+      - key: STORAGE_PROVIDER
+        value: supabase
+      - key: SUPABASE_STORAGE_BUCKET
+        value: souvenir-assets
+      - key: SHOPIFY_STORE_DOMAIN
+        value: souvenir-made-xbc1wrvr.myshopify.com
+      - key: SCOPES
+        value: read_products,read_orders,write_draft_orders
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false

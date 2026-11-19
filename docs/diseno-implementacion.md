@@ -14,8 +14,8 @@ Un estudio de personalización de Souvenir Made: fondo gris azulado #F3F5F8, tin
 
 ## Entorno
 
-Dominio recibido: souvenir-made-xbc1wrvr.myshopify.com. Tema y credenciales pendientes. El modo local usa catálogo demostrativo basado en las familias del PDF y medidas de prueba, no inventario ni precios reales. Las rutas comerciales reales requieren autenticación Shopify. No se configura un despliegue ni se modifica la tienda sin credenciales.
+Dominio recibido: souvenir-made-xbc1wrvr.myshopify.com. La integración real del tema y la instalación siguen pendientes. El modo local usa catálogo demostrativo basado en las familias del PDF y medidas de prueba, no inventario ni precios reales. Las rutas comerciales reales requieren autenticación Shopify. El despliegue elegido es Render Free con PostgreSQL y depósito privado de Supabase; la configuración está preparada y falta completar credenciales y ejecutar el SQL remoto. Ver [guía de despliegue](despliegue-gratuito.md).
 
 ## Calidad
 
-Pruebas primero para validación, aislamiento de diseños, revisiones, exportación y autorización. Luego integración del almacenamiento SQLite y recorrido de navegador. Mantener los límites conocidos documentados en README.
+Pruebas para validación, aislamiento de diseños, revisiones, exportación y autorización. SQLite sirve para demostración local; Supabase comparte las reglas de negocio mediante transacciones con control de versiones. Las pruebas del SQL se ejecutan con PostgreSQL local mediante PGlite, y las del SDK usan un transporte de pruebas sin credenciales reales. Mantener los límites conocidos documentados en README.

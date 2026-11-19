@@ -41,12 +41,11 @@ import {
 import { requirePublicShop } from "../lib/access.server";
 import { getRepository } from "../lib/repository.server";
 import type { Design } from "../lib/repository.server";
-
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const shop = await requirePublicShop(request),
     repo = getRepository();
-  if (shop === "demo") repo.seed(shop);
-  const product = repo.getProduct(shop, params.productId!);
+  if (shop === "demo") await repo.seed(shop);
+  const product = await repo.getProduct(shop, params.productId!);
   if (
     shop !== "demo" &&
     new URL(request.url).searchParams.get("variant") &&
@@ -81,7 +80,6 @@ const inkOptions = [
   "#bd3434",
   "#815333",
 ];
-
 export default function Studio() {
   const { product, shop, demo } = useLoaderData<typeof loader>();
   const initial = defaultDocument(product);
@@ -103,7 +101,10 @@ export default function Studio() {
     [guides, setGuides] = useState(true),
     [zoom, setZoom] = useState(1);
   const [historyVersion, setHistoryVersion] = useState(0),
-    history = useRef<{ past: DesignDocument[]; future: DesignDocument[] }>({
+    history = useRef<{
+      past: DesignDocument[];
+      future: DesignDocument[];
+    }>({
       past: [],
       future: [],
     });
@@ -210,7 +211,6 @@ export default function Studio() {
       cancelled = true;
     };
   }, [shop, recoveryKey]);
-
   async function saveCurrent() {
     if (saving.current)
       throw new Error("Hay un guardado en curso. Espera un momento.");
@@ -262,7 +262,6 @@ export default function Studio() {
     }, 1400);
     return () => clearTimeout(timer);
   }, [document, owner, ready, busy]);
-
   function undo(forward = false) {
     const source = forward ? history.current.future : history.current.past;
     const previous = source.pop();
@@ -328,7 +327,7 @@ export default function Studio() {
     if (!file) return;
     if (
       !["image/png", "image/jpeg"].includes(file.type) ||
-      file.size > 8_000_000
+      file.size > 8000000
     ) {
       setError("Sube una imagen PNG o JPEG de hasta 8 MB.");
       return;
@@ -501,7 +500,6 @@ export default function Studio() {
     { id: "templates", icon: LayoutTemplate, name: "Diseños" },
     { id: "layers", icon: Layers, name: "Capas" },
   ] as const;
-
   return (
     <div className="studio-app">
       <header className="topbar">

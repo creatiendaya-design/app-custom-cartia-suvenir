@@ -7,6 +7,31 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test("Shopify launch opens the dashboard and retains its embedded context", async ({
+  page,
+}) => {
+  const params = new URLSearchParams({
+    shop: "souvenir-made-xbc1wrvr.myshopify.com",
+    embedded: "1",
+    host: Buffer.from(
+      "admin.shopify.com/store/souvenir-made-xbc1wrvr",
+    ).toString("base64"),
+  });
+  await page.goto(`/?${params}`);
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === "/app" &&
+      url.searchParams.get("host") === params.get("host") &&
+      url.searchParams.get("embedded") === "1",
+  );
+  await expect(
+    page.getByRole("button", {
+      name: "Configurar Gorra con parche",
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
 test("customer edits, saves, reloads and submits a design for workshop review", async ({
   page,
 }) => {

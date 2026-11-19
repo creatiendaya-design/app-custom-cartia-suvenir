@@ -12,16 +12,21 @@ import { getRepository, type Revision } from "../lib/repository.server";
 import { documentSchema, productSchema } from "../lib/domain";
 import { buildProductionPackage } from "../lib/export.server";
 import { cartSignature } from "../lib/integration.server";
-
 const resourceId = z.string().min(1).max(100);
 const revisionSchema = z.number().int().positive();
-function assetsFor(shop: string, snapshot: Revision) {
+async function assetsFor(shop: string, snapshot: Revision) {
   const repo = getRepository();
-  return snapshot.document.elements
-    .flatMap((e) =>
-      e.type === "image" ? [repo.getAsset(shop, e.assetId)] : [],
+  return (
+    await Promise.all(
+      [
+        ...new Set(
+          snapshot.document.elements.flatMap((e) =>
+            e.type === "image" ? [e.assetId] : [],
+          ),
+        ),
+      ].map((id) => repo.getAsset(shop, id)),
     )
-    .filter((asset): asset is NonNullable<typeof asset> => !!asset);
+  ).filter((asset): asset is NonNullable<typeof asset> => !!asset);
 }
 async function limitedJson(request: Request) {
   if (!request.headers.get("content-type")?.includes("application/json"))
@@ -34,7 +39,7 @@ async function limitedJson(request: Request) {
     const { value, done } = await reader.read();
     if (done) break;
     length += value.length;
-    if (length > 12_000_000) {
+    if (length > 12000000) {
       await reader.cancel();
       throw new Response("El archivo es demasiado grande. Máximo 8 MB.", {
         status: 413,
@@ -73,14 +78,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       const shop = await requirePublicShop(request),
         owner = readOwner(request),
         id = resourceId.parse(query.get("id"));
-      const design = repo.getOwnedDesign(shop, owner, id);
+      const design = await repo.getOwnedDesign(shop, owner, id);
       if (!design) throw new Response("Diseño no encontrado.", { status: 404 });
-      const snapshot = repo.getRevision(shop, id, design.revision)!;
+      const snapshot = (await repo.getRevision(shop, id, design.revision))!;
       return Response.json(
         {
           design: { ...design, owner: undefined },
           snapshot,
-          assets: assetsFor(shop, snapshot),
+          assets: await assetsFor(shop, snapshot),
         },
         { headers: { "Cache-Control": "no-store" } },
       );
@@ -88,15 +93,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const merchant = await requireMerchant(request);
     if (params.intent === "review-detail" || params.intent === "export") {
       const id = resourceId.parse(query.get("id")),
-        design = repo.getDesign(merchant.shop, id);
+        design = await repo.getDesign(merchant.shop, id);
       if (!design) throw new Response("Diseño no encontrado.", { status: 404 });
       const revision = query.has("revision")
         ? revisionSchema.parse(Number(query.get("revision")))
         : design.revision;
-      const snapshot = repo.getRevision(merchant.shop, id, revision);
+      const snapshot = await repo.getRevision(merchant.shop, id, revision);
       if (!snapshot)
         throw new Response("Revisión no encontrada.", { status: 404 });
-      const assets = assetsFor(merchant.shop, snapshot);
+      const assets = await assetsFor(merchant.shop, snapshot);
       if (params.intent === "export") {
         const bytes = await buildProductionPackage(
           id,
@@ -117,7 +122,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           design: { ...design, owner: undefined },
           snapshot,
           assets,
-          history: repo.history(merchant.shop, id),
+          history: await repo.history(merchant.shop, id),
         },
         { headers: { "Cache-Control": "no-store" } },
       );
@@ -153,14 +158,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
       if (params.intent === "upload") {
         const data = z
           .string()
-          .max(11_000_000)
+          .max(11000000)
           .regex(/^data:image\/(png|jpeg);base64,[a-zA-Z0-9+/=]+$/)
           .parse(body.data);
         const original = Buffer.from(data.split(",")[1], "base64");
-        if (original.length > 8_000_000)
+        if (original.length > 8000000)
           throw new Error("Máximo 8 MB por imagen.");
         const pipeline = sharp(original, {
-          limitInputPixels: 16_000_000,
+          limitInputPixels: 16000000,
           failOn: "error",
         });
         const metadata = await pipeline.metadata();
@@ -170,7 +175,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           .rotate()
           .png()
           .toBuffer({ resolveWithObject: true });
-        if (normalized.length > 16_000_000)
+        if (normalized.length > 16000000)
           throw new Error(
             "La imagen procesada es demasiado grande. Reduce su resolución.",
           );
@@ -183,14 +188,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
           height: info.height,
           data: `data:image/png;base64,${normalized.toString("base64")}`,
         };
-        repo.putAsset(asset);
+        await repo.putAsset(asset);
         return Response.json({
           asset: { ...asset, shop: undefined, owner: undefined },
         });
       }
       if (params.intent === "save") {
         const document = documentSchema.parse(body.document);
-        const configured = repo.getProduct(shop, document.productId);
+        const configured = await repo.getProduct(shop, document.productId);
         if (
           shop !== "demo" &&
           (!configured ||
@@ -202,7 +207,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           );
         for (const element of document.elements)
           if (element.type === "image") {
-            const asset = repo.getAsset(shop, element.assetId);
+            const asset = await repo.getAssetMetadata(shop, element.assetId);
             if (
               !asset ||
               asset.owner !== owner ||
@@ -213,7 +218,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 "No se encontró una imagen original válida para este diseño.",
               );
           }
-        const saved = repo.saveDesign(
+        const saved = await repo.saveDesign(
           shop,
           owner,
           document,
@@ -229,12 +234,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       if (params.intent === "submit")
         return Response.json({
           design: {
-            ...repo.submitDesign(shop, owner, id, revision),
+            ...(await repo.submitDesign(shop, owner, id, revision)),
             owner: undefined,
           },
         });
-      const design = repo.getOwnedDesign(shop, owner, id),
-        snapshot = repo.getRevision(shop, id, revision);
+      const design = await repo.getOwnedDesign(shop, owner, id),
+        snapshot = await repo.getRevision(shop, id, revision);
       if (
         !design ||
         !snapshot ||
@@ -242,7 +247,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         design.status !== "submitted"
       )
         throw new Error("Envía la revisión actual antes de continuar.");
-      const product = repo.getProduct(shop, snapshot.product.id);
+      const product = await repo.getProduct(shop, snapshot.product.id);
       if (
         shop === "demo" ||
         !product?.verified ||
@@ -277,7 +282,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const merchant = await requireMerchant(request);
     if (params.intent === "product")
       return Response.json({
-        product: repo.updateProduct(
+        product: await repo.updateProduct(
           merchant.shop,
           productSchema.parse(body.product),
         ),
@@ -286,7 +291,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       revision = revisionSchema.parse(body.revision);
     if (params.intent === "review")
       return Response.json({
-        design: repo.reviewDesign(
+        design: await repo.reviewDesign(
           merchant.shop,
           id,
           revision,
@@ -300,7 +305,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
     if (params.intent === "production")
       return Response.json({
-        design: repo.startProduction(
+        design: await repo.startProduction(
           merchant.shop,
           id,
           revision,
@@ -310,7 +315,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (params.intent === "demo-payment") {
       if (!merchant.demo) throw new Response("No permitido.", { status: 403 });
       return Response.json({
-        design: repo.setDemoPayment(merchant.shop, id, "paid"),
+        design: await repo.setDemoPayment(merchant.shop, id, "paid"),
       });
     }
     if (params.intent === "quote") {
@@ -320,10 +325,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         .number()
         .int()
         .min(1)
-        .max(100_000_000)
+        .max(100000000)
         .parse(body.unitPriceCents);
-      const design = repo.getDesign(merchant.shop, id),
-        snapshot = repo.getRevision(merchant.shop, id, revision);
+      const design = await repo.getDesign(merchant.shop, id),
+        snapshot = await repo.getRevision(merchant.shop, id, revision);
       if (
         !design ||
         !snapshot ||
@@ -395,7 +400,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
             ?.map((e: { message: string }) => e.message)
             .join(" ") || "No se pudo crear el enlace de pago.",
         );
-      repo.attachQuote(
+      await repo.attachQuote(
         merchant.shop,
         id,
         draft.draftOrder.id,

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { getAppUrl } from "./app-url.server";
 
 export function isLocalDemo(
   request: Request,
@@ -19,7 +20,7 @@ export function isLocalDemo(
 export function requireSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   const expected = new URL(request.url).origin;
-  const configured = process.env.SHOPIFY_APP_URL;
+  const configured = getAppUrl();
   if (!origin || (origin !== expected && origin !== configured))
     throw new Response("Origen no permitido.", { status: 403 });
 }
@@ -65,9 +66,7 @@ export async function requirePublicShop(request: Request) {
   if (!permittedShop(shop))
     throw new Response("Tienda no autorizada.", { status: 403 });
   const { getRepository } = await import("./repository.server");
-  const installed = getRepository()
-    .db.prepare("SELECT id FROM sessions WHERE shop=? LIMIT 1")
-    .get(shop);
+  const installed = await getRepository().hasSession(shop);
   if (!installed)
     throw new Response("La app debe instalarse en la tienda.", { status: 403 });
   return shop;

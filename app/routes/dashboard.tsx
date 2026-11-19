@@ -35,25 +35,18 @@ import {
   type Design,
   type Revision,
 } from "../lib/repository.server";
-
 export async function loader({ request }: LoaderFunctionArgs) {
   const merchant = await requireMerchant(request),
     repo = getRepository();
-  if (merchant.demo) repo.seed(merchant.shop);
-  else if (!repo.listProducts(merchant.shop).length) {
-    repo.seed(merchant.shop);
-    repo
-      .listProducts(merchant.shop)
-      .forEach((product) =>
-        repo.updateProduct(merchant.shop, { ...product, enabled: false }),
-      );
-  }
+  if (merchant.demo || !(await repo.listProducts(merchant.shop)).length)
+    await repo.seed(merchant.shop);
   return {
     ...merchant,
-    products: repo.listProducts(merchant.shop),
-    designs: repo
-      .listDesigns(merchant.shop)
-      .map((record) => ({ ...record, owner: "" })),
+    products: await repo.listProducts(merchant.shop),
+    designs: (await repo.listDesigns(merchant.shop)).map((record) => ({
+      ...record,
+      owner: "",
+    })),
     storeDomain:
       process.env.SHOPIFY_STORE_DOMAIN ||
       "souvenir-made-xbc1wrvr.myshopify.com",
@@ -87,7 +80,6 @@ type ShopifyProduct = {
     }>;
   };
 };
-
 function Dashboard() {
   const { products, designs, demo, storeDomain } =
       useLoaderData<typeof loader>(),
@@ -209,7 +201,6 @@ function Dashboard() {
     payment_confirmed: "Pago confirmado por Shopify",
     order_received: "Pedido recibido de Shopify",
   };
-
   return (
     <div className="dashboard-app">
       <header className="topbar">

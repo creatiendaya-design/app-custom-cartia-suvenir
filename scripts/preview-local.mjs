@@ -18,6 +18,7 @@ const child = spawn(process.execPath, [server, "./build/server/index.js"], {
     ...process.env,
     NODE_ENV: "development",
     LOCAL_DEMO: "true",
+    STORAGE_PROVIDER: "sqlite",
     HOST: "127.0.0.1",
     PORT: String(port),
   },

@@ -4,14 +4,13 @@ import sharp from "sharp";
 import { action, loader } from "../app/routes/api";
 import { Repository } from "../app/lib/repository.server";
 import { defaultDocument } from "../app/lib/domain";
-
 let repo: Repository;
 const owner = randomUUID();
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubEnv("LOCAL_DEMO", "true");
   repo = new Repository(":memory:");
   globalThis.souvenirRepository = repo;
-  repo.seed("demo");
+  await repo.seed("demo");
 });
 afterEach(() => {
   repo.close();
@@ -53,7 +52,7 @@ function get(intent: string, query = "", capability = owner) {
 }
 describe("API workflow", () => {
   it("saves and retrieves the current design and protects it from another customer", async () => {
-    const doc = defaultDocument(repo.getProduct("demo", "cap-patch")!);
+    const doc = defaultDocument((await repo.getProduct("demo", "cap-patch"))!);
     const response = await post("save", { document: doc });
     expect(response.status).toBe(200);
     const { design } = await response.json();
@@ -83,7 +82,7 @@ describe("API workflow", () => {
     expect(response.status).toBe(200);
     const { asset } = await response.json();
     expect(asset.width).toBe(600);
-    const doc = defaultDocument(repo.getProduct("demo", "cap-patch")!);
+    const doc = defaultDocument((await repo.getProduct("demo", "cap-patch"))!);
     doc.elements = [
       {
         id: "img",
@@ -111,7 +110,7 @@ describe("API workflow", () => {
     );
   });
   it("runs review and download without authorizing unverified production", async () => {
-    const doc = defaultDocument(repo.getProduct("demo", "cap-patch")!);
+    const doc = defaultDocument((await repo.getProduct("demo", "cap-patch"))!);
     const { design } = await (await post("save", { document: doc })).json();
     const input = { id: design.id, revision: 1 };
     expect((await post("submit", input)).status).toBe(200);
