@@ -1,0 +1,27 @@
+{% if product %}
+  <div class="sm-personalizer" data-sm-personalizer
+    data-app-url="{{ block.settings.app_url | escape }}"
+    data-product-key="{{ product.metafields.souvenir.personalizer_key.value | default: block.settings.product_key | escape }}"
+    data-variant-id="{{ product.selected_or_first_available_variant.id }}"
+    data-shop="{{ shop.permanent_domain | escape }}" {{ block.shopify_attributes }}>
+    <button type="button" class="sm-personalizer__open">{{ block.settings.button_label | escape }}</button>
+    <p class="sm-personalizer__error" role="alert" hidden></p>
+    <dialog class="sm-personalizer__dialog">
+      <button type="button" class="sm-personalizer__close" aria-label="Cerrar personalizador">Cerrar</button>
+      <iframe title="Personaliza tu producto con Souvenir Made" class="sm-personalizer__frame" referrerpolicy="strict-origin-when-cross-origin" allow="clipboard-write"></iframe>
+    </dialog>
+  </div>
+{% endif %}
+{% schema %}
+{
+  "name": "Personalizador Souvenir",
+  "target": "section",
+  "javascript": "personalizer.js",
+  "stylesheet": "personalizer.css",
+  "settings": [
+    { "type": "url", "id": "app_url", "label": "URL HTTPS de la app" },
+    { "type": "text", "id": "product_key", "label": "Clave de configuración", "default": "cap-patch", "info": "Puede sobrescribirse con el metafield souvenir.personalizer_key del producto." },
+    { "type": "text", "id": "button_label", "label": "Texto del botón", "default": "Personalizar este producto" }
+  ]
+}
+{% endschema %}

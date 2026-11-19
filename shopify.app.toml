@@ -1,0 +1,21 @@
+# Link this file to a custom-distribution app with Shopify CLI before deployment.
+client_id = ""
+name = "Souvenir Made Personalizer"
+application_url = "http://localhost:3000/app"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[access_scopes]
+scopes = "read_products,read_orders,write_draft_orders"
+
+[auth]
+redirect_urls = ["http://localhost:3000/auth/callback"]
+
+[webhooks]
+api_version = "2026-10"
+
+[[webhooks.subscriptions]]
+topics = ["app/uninstalled", "orders/create", "orders/paid", "orders/updated", "orders/cancelled"]
+uri = "/webhooks"

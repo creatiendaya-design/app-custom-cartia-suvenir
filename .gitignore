@@ -1,0 +1,13 @@
+node_modules/
+.npm-cache/
+.react-router/
+build/
+data/
+.env
+.env.*
+!.env.example
+tmp/
+test-results/
+playwright-report/
+coverage/
+.shopify/
