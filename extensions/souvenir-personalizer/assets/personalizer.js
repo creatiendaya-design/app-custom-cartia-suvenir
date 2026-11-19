@@ -34,6 +34,8 @@
             const url = new URL(`/studio/${block.dataset.productKey}`, base);
             url.searchParams.set("shop", block.dataset.shop);
             url.searchParams.set("variant", variantId);
+            if (block.dataset.shopifyProductId)
+              url.searchParams.set("product", block.dataset.shopifyProductId);
             frame.src = url.href;
             dialog.showModal();
           } catch {

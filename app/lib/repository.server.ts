@@ -3,10 +3,13 @@ import {
   canProduce,
   documentSchema,
   productSchema,
+  assignmentSchema,
+  resolveAssignedProduct,
   validateDocument,
   type DesignDocument,
   type PaymentStatus,
   type Product,
+  type ProductAssignment,
   type ReviewStatus,
 } from "./domain";
 import { seedCatalog } from "./catalog";
@@ -122,7 +125,7 @@ export class Repository {
         if (!(await tx.get("product", shop, product.id)))
           await tx.set("product", shop, product.id, {
             ...product,
-            enabled: shop === "demo",
+            enabled: shop === "demo" && product.id === "cap-patch",
           });
     });
   }
@@ -140,9 +143,144 @@ export class Repository {
   async updateProduct(shop: string, input: Product) {
     const product = productSchema.parse(input);
     return (await this.atomic(async (tx) => {
-      if (!(await tx.get("product", shop, product.id)))
-        throw new Error("Producto no encontrado.");
+      const existing = await tx.get<Product>("product", shop, product.id);
+      if (!existing) throw new Error("Producto no encontrado.");
+      const updated = {
+        ...product,
+        templateId:
+          existing.templateId ||
+          seedCatalog.find((p) => p.id === existing.id)?.id ||
+          "",
+        assignments: existing.assignments || [],
+        createdAt: existing.createdAt || "",
+      };
+      await this.syncProductClaims(
+        tx,
+        shop,
+        productSchema.parse(existing),
+        updated,
+      );
+      await tx.set("product", shop, product.id, updated);
+      return updated;
+    }))!;
+  }
+  private assignedIds(product: Product) {
+    return product.assignments.length
+      ? product.assignments.map((a) => a.productId)
+      : product.shopifyProductId
+        ? [product.shopifyProductId]
+        : [];
+  }
+  private async syncProductClaims(
+    tx: UnitOfWork,
+    shop: string,
+    previous: Product,
+    next: Product,
+  ) {
+    const oldIds = previous.enabled ? this.assignedIds(previous) : [],
+      newIds = next.enabled ? this.assignedIds(next) : [];
+    if (newIds.length) {
+      for (const other of await tx.list<Product>("product", shop)) {
+        const parsed = productSchema.parse(other);
+        if (
+          parsed.id !== next.id &&
+          parsed.enabled &&
+          this.assignedIds(parsed).some((id) => newIds.includes(id))
+        )
+          throw new Error(
+            `Un producto ya tiene otro personalizador activo: ${parsed.name}. Desactívalo o cambia la asignación.`,
+          );
+      }
+    }
+    for (const productId of new Set([...oldIds, ...newIds])) {
+      const key = `personalizer-product:${productId.split("/").pop()}`;
+      const claim = await tx.get<{ personalizerId: string }>(
+        "quota",
+        shop,
+        key,
+      );
+      if (newIds.includes(productId)) {
+        if (claim && claim.personalizerId !== next.id)
+          throw new Error("Este producto ya tiene otro personalizador activo.");
+        await tx.set("quota", shop, key, { personalizerId: next.id });
+      } else if (claim?.personalizerId === next.id)
+        await tx.delete("quota", shop, key);
+    }
+  }
+  async findPersonalizer(shop: string, variantId: string, productId?: string) {
+    for (const product of await this.listPersonalizers(shop)) {
+      if (!product.enabled) continue;
+      try {
+        return resolveAssignedProduct(product, variantId, productId);
+      } catch {}
+    }
+    return null;
+  }
+  async listPersonalizers(shop: string) {
+    return (await this.listProducts(shop)).filter(
+      (p) => p.templateId || p.enabled || p.variantId || p.assignments.length,
+    );
+  }
+  async createPersonalizer(
+    shop: string,
+    templateId: string,
+    name: string,
+    settings?: Partial<Product>,
+    assignments: ProductAssignment[] = [],
+  ) {
+    const template = seedCatalog.find((p) => p.id === templateId);
+    if (!template) throw new Error("Plantilla no encontrada.");
+    const product = productSchema.parse({
+      ...template,
+      ...settings,
+      id: `p-${randomUUID()}`,
+      name: name.trim(),
+      templateId,
+      createdAt: new Date().toISOString(),
+      enabled: settings?.enabled === true,
+      verified: settings?.verified === true,
+      variantId: "",
+      shopifyProductId: "",
+      assignments: assignments.map((a) => assignmentSchema.parse(a)),
+    });
+    await this.atomic(async (tx) => {
+      await this.syncProductClaims(
+        tx,
+        shop,
+        { ...product, enabled: false },
+        product,
+      );
       await tx.set("product", shop, product.id, product);
+    });
+    return product;
+  }
+  async assignProducts(shop: string, id: string, input: ProductAssignment[]) {
+    const assignments = productSchema.shape.assignments.parse(input);
+    if (
+      new Set(assignments.map((a) => a.productId)).size !== assignments.length
+    )
+      throw new Error("Hay productos asignados duplicados.");
+    return (await this.atomic(async (tx) => {
+      const existing = await tx.get<Product>("product", shop, id);
+      if (!existing) throw new Error("Personalizador no encontrado.");
+      const product = productSchema.parse({
+        ...existing,
+        templateId:
+          existing.templateId ||
+          seedCatalog.find((p) => p.id === existing.id)?.id ||
+          "",
+        assignments,
+        variantId: "",
+        shopifyProductId: "",
+        enabled: assignments.length ? existing.enabled : false,
+      });
+      await this.syncProductClaims(
+        tx,
+        shop,
+        productSchema.parse(existing),
+        product,
+      );
+      await tx.set("product", shop, id, product);
       return product;
     }))!;
   }
@@ -182,15 +320,36 @@ export class Repository {
     const document = documentSchema.parse(input),
       recordId = id ?? randomUUID();
     return (await this.atomic(async (tx) => {
-      const product = await tx.get<Product>(
+      const configured = await tx.get<Product>(
         "product",
         shop,
         document.productId,
       );
-      if (!product?.enabled) throw new Error("El producto no está disponible.");
+      if (!configured?.enabled)
+        throw new Error("El producto no está disponible.");
+      const product = resolveAssignedProduct(
+        productSchema.parse(configured),
+        document.variantId,
+      );
+      if (shop !== "demo" && document.color !== product.baseColor)
+        throw new Error("El color no coincide con la configuración.");
       const previous = id ? await tx.get<Design>("design", shop, id) : null;
       if (id && previous?.owner !== owner)
         throw new Error("Diseño no encontrado.");
+      if (previous) {
+        const snapshot = await tx.get<Revision>(
+          "revision",
+          shop,
+          `${id}:${previous.revision}`,
+        );
+        if (
+          snapshot?.document.variantId !== document.variantId ||
+          snapshot?.document.productId !== document.productId
+        )
+          throw new Error(
+            "Crea un diseño nuevo para otra variante o personalizador.",
+          );
+      }
       if (
         previous &&
         (previous.payment === "paid" || previous.orderId || previous.quoteId)

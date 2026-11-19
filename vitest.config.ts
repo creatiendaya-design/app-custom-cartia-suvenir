@@ -11,6 +11,7 @@ export default defineConfig({
         "app/lib/storage-supabase.server.ts",
         "app/lib/unit-of-work.server.ts",
         "app/lib/app-url.server.ts",
+        "app/lib/shopify-catalog.server.ts",
         "app/lib/export.server.ts",
         "app/lib/access.server.ts",
       ],

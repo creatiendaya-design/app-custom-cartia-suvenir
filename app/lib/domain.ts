@@ -42,6 +42,27 @@ export const documentSchema = z.object({
 });
 export type DesignDocument = z.infer<typeof documentSchema>;
 export type DesignElement = DesignDocument["elements"][number];
+export const assignmentSchema = z.object({
+  productId: z.string().regex(/^gid:\/\/shopify\/Product\/\d+$/),
+  title: z.string().min(1).max(255),
+  handle: z.string().max(255),
+  image: z
+    .string()
+    .max(2000)
+    .refine((value) => !value || value.startsWith("https://")),
+  status: z.enum(["ACTIVE", "DRAFT", "ARCHIVED"]),
+  variants: z
+    .array(
+      z.object({
+        id: z.string().regex(/^\d+$/),
+        title: z.string().max(255),
+        price: z.string().max(40),
+      }),
+    )
+    .min(1)
+    .max(2048),
+});
+export type ProductAssignment = z.infer<typeof assignmentSchema>;
 export const productSchema = z.object({
   id: z
     .string()
@@ -78,8 +99,47 @@ export const productSchema = z.object({
   areaX: z.number().min(0).max(900),
   areaY: z.number().min(0).max(900),
   areaWidth: z.number().min(20).max(800),
+  templateId: z.string().max(100).default(""),
+  assignments: z.array(assignmentSchema).max(100).default([]),
+  createdAt: z.string().max(40).default(""),
 });
 export type Product = z.infer<typeof productSchema>;
+export function resolveAssignedProduct(
+  product: Product,
+  variantId?: string,
+  productId?: string,
+): Product {
+  if (product.assignments.length) {
+    const selected = product.assignments.find(
+      (assignment) =>
+        (!productId ||
+          assignment.productId === productId ||
+          assignment.productId.split("/").pop() === productId) &&
+        (!variantId ||
+          assignment.variants.some((variant) => variant.id === variantId)),
+    );
+    if (!selected)
+      throw new Error("Esta variante no está asignada a este personalizador.");
+    const variant =
+      selected.variants.find((v) => v.id === variantId) || selected.variants[0];
+    return {
+      ...product,
+      name: selected.title,
+      shopifyProductId: selected.productId,
+      variantId: variant.id,
+      assignments: [{ ...selected, variants: [variant] }],
+    };
+  }
+  if (variantId && variantId !== product.variantId)
+    throw new Error("Esta variante no está asignada a este personalizador.");
+  if (
+    productId &&
+    productId !== product.shopifyProductId &&
+    productId !== product.shopifyProductId.split("/").pop()
+  )
+    throw new Error("Este producto no está asignado a este personalizador.");
+  return product;
+}
 export type ReviewStatus =
   | "draft"
   | "submitted"

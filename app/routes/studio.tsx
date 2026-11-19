@@ -35,6 +35,7 @@ import {
   defaultDocument,
   fonts,
   validateDocument,
+  resolveAssignedProduct,
   type DesignDocument,
   type DesignElement,
 } from "../lib/domain";
@@ -45,22 +46,31 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const shop = await requirePublicShop(request),
     repo = getRepository();
   if (shop === "demo") await repo.seed(shop);
-  const product = await repo.getProduct(shop, params.productId!);
-  if (
-    shop !== "demo" &&
-    new URL(request.url).searchParams.get("variant") &&
-    new URL(request.url).searchParams.get("variant") !== product?.variantId
-  )
-    throw new Response(
-      "Esta variante necesita su propia configuraci?n de personalizaci?n.",
-      { status: 404 },
-    );
-  if (!product?.enabled)
+  const query = new URL(request.url).searchParams;
+  const variant = query.get("variant") || undefined,
+    shopifyProductId = query.get("product") || undefined;
+  const configured =
+    params.productId === "auto" && variant
+      ? await repo.findPersonalizer(shop, variant, shopifyProductId)
+      : await repo.getProduct(shop, params.productId!);
+  if (!configured?.enabled)
     throw new Response(
       "Este producto aún no está disponible para personalizar.",
       { status: 404 },
     );
-  return { product, shop, demo: shop === "demo" };
+  try {
+    const product = resolveAssignedProduct(
+      configured,
+      variant,
+      shopifyProductId,
+    );
+    return { product, shop, demo: shop === "demo" };
+  } catch {
+    throw new Response(
+      "Este producto o variante no está asignado a este personalizador.",
+      { status: 404 },
+    );
+  }
 }
 type Tool = "text" | "image" | "templates" | "layers";
 const colorOptions = [
@@ -117,7 +127,7 @@ export default function Studio() {
     y: number;
     mode: "move" | "resize";
   } | null>(null);
-  const recoveryKey = `sm:project:${shop}:${product.id}`,
+  const recoveryKey = `sm:project:${shop}:${product.id}${product.variantId ? `:${product.variantId}` : ""}`,
     selected = document.elements.find((e) => e.id === selectedId);
   const issues = validateDocument(document, product),
     height = areaHeight(product);
@@ -187,6 +197,11 @@ export default function Studio() {
           if (!response.ok) throw new Error();
           if (!cancelled) {
             const restored = result.snapshot.document as DesignDocument;
+            if (
+              restored.productId !== product.id ||
+              restored.variantId !== product.variantId
+            )
+              throw new Error();
             docRef.current = restored;
             setDocument(restored);
             setAssets(result.assets);
@@ -960,7 +975,8 @@ export default function Studio() {
                 <g
                   transform={`translate(${product.areaX} ${product.areaY}) scale(${product.areaWidth / 1000})`}
                 >
-                  {product.id === "cap-patch" && (
+                  {(product.id === "cap-patch" ||
+                    product.templateId === "cap-patch") && (
                     <rect
                       x="-25"
                       y="-25"

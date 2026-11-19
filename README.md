@@ -35,7 +35,8 @@ En Render, `STORAGE_PROVIDER=supabase` guarda productos, diseños, revisiones, s
 
 ## Qué funciona
 
-- Catálogo inicial de 16 familias con búsqueda y filtros. Sus medidas son ejemplos sin validar.
+- Biblioteca de 16 plantillas con búsqueda y filtros. Sus medidas son ejemplos sin validar. Desde una plantilla se pueden crear varios personalizadores independientes.
+- Panel de personalizadores con búsqueda, filtros de estado, activación y asignación de uno o varios productos reales de Shopify. Un producto admite un personalizador activo; las asignaciones incluyen sus variantes y se comprueban contra la tienda en el servidor.
 - Editor frontal: texto, tipografía, colores de tinta, PNG/JPEG, movimiento, escala proporcional, giro, capas, duplicación, centrado y deshacer/rehacer.
 - Guardado automático, recuperación y revisiones inmutables. Un diseño asociado a pago/cotización requiere una copia para editar.
 - Validación de límites y resolución efectiva de imágenes. Normalización de cargas con Sharp; límites de formato, peso y píxeles.
@@ -67,11 +68,11 @@ SUPABASE_STORAGE_BUCKET=souvenir-assets
 
 4. Ejecutar `npm.cmd run storage:check`. Publicar el servidor según [la guía gratuita](docs/despliegue-gratuito.md): `render.yaml` selecciona **Free**, sin disco ni base de datos de Render. Las variables se configuran también en Render; `.env` no se sube. Si se omite `SHOPIFY_APP_URL`, se utiliza `RENDER_EXTERNAL_URL` automáticamente. Actualizar `application_url` y `redirect_urls` del TOML; el callback es `/auth/callback`. Shopify aloja la extensión del tema; Render ejecuta este servidor y Supabase conserva los datos.
 5. Desplegar la configuración/extensión con `npm run shopify:deploy` e instalar la app mediante su enlace de distribución personalizada. Estos pasos aún no se han ejecutado ni probado contra la tienda.
-6. Desde el panel autenticado, consultar variantes reales y configurar un primer producto: color, ID de variante, técnica y área física. La variante debe incluir el precio de la personalización para la compra directa. Para precio revisado, crear un enlace de pago desde un diseño aprobado.
-7. En una copia del tema, añadir el bloque **Personalizador Souvenir** a la plantilla de producto. Configurar la URL HTTPS y la clave de producto, por ejemplo `cap-patch`. Para distintas plantillas/productos se puede usar el metafield de producto `souvenir.personalizer_key`.
+6. Desde **Personalizadores → Crear personalizador**, elegir una plantilla, ponerle nombre y usar **Asignar productos** para seleccionar productos reales. Verificar color, técnica y área física antes de vender. La compra directa conserva el precio de cada variante en Shopify; para precio revisado, crear un enlace de pago desde un diseño aprobado.
+7. Publicar la extensión mediante Shopify CLI y, en una copia del tema, añadir el bloque **Personalizador Souvenir** a la plantilla de producto. Configurar la URL HTTPS y el campo **Personalizador** en `auto`. El bloque enviará producto y variante al servidor, que resolverá el personalizador activo. También admite una clave específica o el metafield `souvenir.personalizer_key` para configuraciones heredadas.
 8. Hacer una compra de prueba, comprobar el evento de pago, revisar el diseño, exportar y fabricar una muestra. Confirmar el tema y los permisos/datos protegidos necesarios antes de activar ventas. La compra real está pendiente de esta validación.
 
-Una configuración enlaza una variante/color. El selector de colores es libre solo en la demostración; en la tienda se conserva el color configurado. Una variante diferente necesita su propia configuración antes de habilitarse. El catálogo real empieza sin publicar para evitar mostrar ejemplos automáticamente.
+Un personalizador comparte su vista, color de referencia, técnica y área entre los productos asignados. El selector de colores es libre solo en la demostración; no se infieren colores o medidas físicas de las opciones de Shopify. Cada diseño del comprador conserva su producto/variante y revisión; la recuperación se separa por variante. Las configuraciones existentes se mantienen. Ver [gestión de personalizadores](docs/personalizadores.md).
 
 No pegar el secreto en `.env.example` ni subir `.env` al repositorio. `SHOPIFY_API_KEY` es el Client ID; la contraseña de la tienda no se utiliza.
 

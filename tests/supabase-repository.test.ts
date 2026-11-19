@@ -209,4 +209,42 @@ describe("Supabase persistence across server instances", () => {
     ).toThrow(/temporal/);
     expect(() => createRepository({ STORAGE_PROVIDER: "unknown" })).toThrow();
   });
+  it("persists multi-product assignments and serializes competing activations in PostgreSQL", async () => {
+    const a = repository(),
+      b = repository(),
+      shop = "assignment-store";
+    const first = await a.createPersonalizer(shop, "cap-patch", "Empresas"),
+      second = await b.createPersonalizer(shop, "cap-patch", "Eventos");
+    const assigned = [
+      {
+        productId: "gid://shopify/Product/701",
+        title: "Gorra",
+        handle: "gorra",
+        image: "",
+        status: "ACTIVE" as const,
+        variants: [{ id: "7011", title: "Única", price: "10.00" }],
+      },
+      {
+        productId: "gid://shopify/Product/702",
+        title: "Otra gorra",
+        handle: "otra",
+        image: "",
+        status: "ACTIVE" as const,
+        variants: [{ id: "7021", title: "Única", price: "12.00" }],
+      },
+    ];
+    const one = await a.assignProducts(shop, first.id, assigned),
+      two = await b.assignProducts(shop, second.id, assigned);
+    const result = await Promise.allSettled([
+      a.updateProduct(shop, { ...one, enabled: true }),
+      b.updateProduct(shop, { ...two, enabled: true }),
+    ]);
+    expect(result.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(
+      (await repository().getProduct(shop, first.id))?.assignments,
+    ).toHaveLength(2);
+    expect(
+      (await repository().findPersonalizer(shop, "7021", "702"))?.variantId,
+    ).toBe("7021");
+  });
 });

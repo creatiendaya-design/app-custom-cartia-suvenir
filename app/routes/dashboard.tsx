@@ -25,9 +25,16 @@ import {
   Copy,
   Layers,
   ShieldCheck,
+  Layers3,
+  Package,
+  Plus,
 } from "lucide-react";
 import { Brand } from "../components/Brand";
 import { ProductScene, type PreviewAsset } from "../components/ProductScene";
+import { PersonalizerList } from "../components/PersonalizerList";
+import { ProductPicker } from "../components/ProductPicker";
+import { seedCatalog } from "../lib/catalog";
+import type { CatalogProduct } from "../lib/shopify-catalog.server";
 import { defaultDocument, statusLabels, type Product } from "../lib/domain";
 import { requireMerchant } from "../lib/access.server";
 import {
@@ -43,6 +50,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return {
     ...merchant,
     products: await repo.listProducts(merchant.shop),
+    personalizers: await repo.listPersonalizers(merchant.shop),
+    templates: seedCatalog,
     designs: (await repo.listDesigns(merchant.shop)).map((record) => ({
       ...record,
       owner: "",
@@ -81,16 +90,23 @@ type ShopifyProduct = {
   };
 };
 function Dashboard() {
-  const { products, designs, demo, storeDomain } =
+  const { products, personalizers, templates, designs, demo, storeDomain } =
       useLoaderData<typeof loader>(),
     revalidator = useRevalidator();
   const [query, setQuery] = useState(""),
     [category, setCategory] = useState("Todos"),
     [stage, setStage] = useState("all");
   const [searchParams, setSearchParams] = useSearchParams(),
-    tab = searchParams.get("tab") || "catalog";
+    tab = searchParams.get("tab") || "personalizers";
   const [configuration, setConfiguration] = useState<Product | null>(null),
     [detail, setDetail] = useState<ReviewDetail | null>(null);
+  const [creatingTemplate, setCreatingTemplate] = useState("");
+  const [createSelection, setCreateSelection] = useState<CatalogProduct[]>([]);
+  const [assignmentTarget, setAssignmentTarget] = useState<{
+    product: Product;
+    draft: boolean;
+    inConfiguration: boolean;
+  } | null>(null);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [error, setError] = useState(""),
@@ -98,13 +114,59 @@ function Dashboard() {
     [quote, setQuote] = useState("");
   const [liveProducts, setLiveProducts] = useState<ShopifyProduct[]>([]),
     [filterStatus, setFilterStatus] = useState("all");
-  const categories = ["Todos", ...new Set(products.map((p) => p.category))];
-  const filtered = products.filter(
+  const categories = ["Todos", ...new Set(templates.map((p) => p.category))];
+  const filtered = templates.filter(
     (p) =>
       `${p.name} ${p.technique}`.toLowerCase().includes(query.toLowerCase()) &&
       (category === "Todos" || p.category === category) &&
       (stage === "all" || p.stage === Number(stage)),
   );
+  function editConfiguration(product: Product) {
+    setCreatingTemplate("");
+    setCreateSelection([]);
+    setConfiguration({ ...product });
+  }
+  function useTemplate(product: Product) {
+    setCreatingTemplate(product.id);
+    setCreateSelection([]);
+    setConfiguration({ ...product, enabled: false, verified: false });
+  }
+  function pickerProducts(product: Product): CatalogProduct[] {
+    if (product.assignments.length)
+      return product.assignments.map((a) => ({
+        id: a.productId,
+        title: a.title,
+        handle: a.handle,
+        status: a.status,
+        featuredImage: a.image ? { url: a.image } : null,
+        variants: {
+          nodes: a.variants.map((v) => ({
+            ...v,
+            id: `gid://shopify/ProductVariant/${v.id}`,
+          })),
+        },
+      }));
+    return product.shopifyProductId && product.variantId
+      ? [
+          {
+            id: product.shopifyProductId,
+            title: product.name,
+            handle: "",
+            status: "ACTIVE",
+            featuredImage: null,
+            variants: {
+              nodes: [
+                {
+                  id: `gid://shopify/ProductVariant/${product.variantId}`,
+                  title: "Variante vinculada",
+                  price: "0",
+                },
+              ],
+            },
+          },
+        ]
+      : [];
+  }
   async function request(intent: string, body?: unknown) {
     const response = await fetch(`/api/${intent}`, {
       method: body === undefined ? "GET" : "POST",
@@ -207,15 +269,20 @@ function Dashboard() {
         <Brand />
         <nav className="main-nav" aria-label="Navegación principal">
           {[
-            { id: "catalog", label: "Productos", icon: Grid2X2 },
-            { id: "designs", label: "Diseños", icon: ClipboardCheck },
+            { id: "personalizers", label: "Personalizadores", icon: Layers3 },
+            { id: "catalog", label: "Plantillas", icon: Grid2X2 },
+            {
+              id: "designs",
+              label: "Revisión del taller",
+              icon: ClipboardCheck,
+            },
             { id: "settings", label: "Conexión", icon: Settings2 },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               className={tab === id ? "active" : ""}
               onClick={() =>
-                setSearchParams(id === "catalog" ? {} : { tab: id })
+                setSearchParams(id === "personalizers" ? {} : { tab: id })
               }
             >
               <Icon size={18} />
@@ -251,24 +318,53 @@ function Dashboard() {
             </a>
           </div>
         )}
+        {tab === "personalizers" && (
+          <PersonalizerList
+            products={personalizers}
+            demo={demo}
+            storeDomain={storeDomain}
+            busy={busy}
+            onCreate={() => setSearchParams({ tab: "catalog" })}
+            onEdit={editConfiguration}
+            onAssign={(product) =>
+              setAssignmentTarget({
+                product,
+                draft: false,
+                inConfiguration: false,
+              })
+            }
+            onToggle={(product) =>
+              void perform(async () => {
+                await request("product", {
+                  product: { ...product, enabled: !product.enabled },
+                });
+                revalidator.revalidate();
+                setMessage(
+                  product.enabled
+                    ? "Personalizador desactivado"
+                    : "Personalizador habilitado",
+                );
+              })
+            }
+          />
+        )}
         {tab === "catalog" && (
           <>
             <div className="page-heading">
               <div>
                 <span className="section-kicker">Hecho para ser único</span>
-                <h1>Tu catálogo, personalizado.</h1>
+                <h1>Plantillas para crear.</h1>
                 <p>
-                  Configura cada producto y transforma una idea en un recuerdo.
+                  Elige una base para tu personalizador y asígnala a los
+                  productos de tu tienda.
                 </p>
               </div>
               <div className="catalog-totals">
-                <strong>{products.length}</strong>
+                <strong>{templates.length}</strong>
                 <span>
-                  productos del catálogo
+                  plantillas del catálogo
                   <br />
-                  <small>
-                    {products.filter((p) => p.verified).length} áreas validadas
-                  </small>
+                  <small>Áreas de ejemplo por validar</small>
                 </span>
               </div>
             </div>
@@ -337,24 +433,20 @@ function Dashboard() {
                       <span>
                         {product.widthMm} × {product.heightMm} mm
                       </span>
-                      <span>
-                        {product.enabled ? "Editor habilitado" : "Sin publicar"}
-                      </span>
+                      <span>Plantilla base</span>
                     </div>
                     <div className="product-card-actions">
-                      <a
-                        className="button primary"
-                        href={`/studio/${product.id}${demo ? "" : `?shop=${storeDomain}`}`}
-                        target={demo ? undefined : "_blank"}
-                        rel="noreferrer"
+                      <button
+                        className="primary"
+                        onClick={() => useTemplate(product)}
                       >
-                        Personalizar
-                        <ExternalLink size={15} />
-                      </a>
+                        Usar plantilla
+                        <Plus size={15} />
+                      </button>
                       <button
                         className="secondary icon-button"
-                        aria-label={`Configurar ${product.name}`}
-                        onClick={() => setConfiguration({ ...product })}
+                        aria-label={`Crear desde ${product.name}`}
+                        onClick={() => useTemplate(product)}
                       >
                         <Settings2 size={18} />
                       </button>
@@ -615,7 +707,43 @@ function Dashboard() {
           </button>
         </div>
       )}
-      {configuration && (
+      {assignmentTarget && (
+        <ProductPicker
+          name={assignmentTarget.product.name}
+          demo={demo}
+          initial={
+            assignmentTarget.draft
+              ? createSelection
+              : pickerProducts(assignmentTarget.product)
+          }
+          onClose={() => setAssignmentTarget(null)}
+          onSave={async (selection) => {
+            if (assignmentTarget.draft) setCreateSelection(selection);
+            else {
+              const result = await request("assign-products", {
+                id: assignmentTarget.product.id,
+                productIds: selection.map((p) => p.id),
+              });
+              if (assignmentTarget.inConfiguration)
+                setConfiguration((current) =>
+                  current
+                    ? {
+                        ...current,
+                        assignments: result.product.assignments,
+                        variantId: "",
+                        shopifyProductId: "",
+                        enabled: result.product.enabled,
+                      }
+                    : null,
+                );
+              revalidator.revalidate();
+              setMessage("Productos asignados");
+            }
+            setAssignmentTarget(null);
+          }}
+        />
+      )}
+      {configuration && !assignmentTarget && (
         <div
           className="modal-backdrop"
           onClick={() => !busy && setConfiguration(null)}
@@ -630,7 +758,9 @@ function Dashboard() {
             <div className="modal-heading">
               <div>
                 <span className="section-kicker">
-                  Configuración del producto
+                  {creatingTemplate
+                    ? "Nuevo personalizador"
+                    : "Configuración del personalizador"}
                 </span>
                 <h2 id="config-title">{configuration.name}</h2>
               </div>
@@ -658,16 +788,34 @@ function Dashboard() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   void perform(async () => {
-                    await request("product", { product: configuration });
+                    await request(
+                      creatingTemplate ? "create-personalizer" : "product",
+                      {
+                        product: configuration,
+                        ...(creatingTemplate
+                          ? {
+                              templateId: creatingTemplate,
+                              productIds: createSelection.map((p) => p.id),
+                            }
+                          : {}),
+                      },
+                    );
                     setConfiguration(null);
+                    if (creatingTemplate) setSearchParams({});
                     revalidator.revalidate();
-                    setMessage("Configuración guardada");
+                    setMessage(
+                      creatingTemplate
+                        ? "Personalizador creado"
+                        : "Configuración guardada",
+                    );
+                    setCreatingTemplate("");
+                    setCreateSelection([]);
                   });
                 }}
               >
                 <div className="field-stack">
                   <label>
-                    Nombre del producto
+                    Nombre del personalizador
                     <input
                       value={configuration.name}
                       required
@@ -680,6 +828,34 @@ function Dashboard() {
                       }
                     />
                   </label>
+                  <div className="configuration-assignments">
+                    <strong>Productos de Shopify</strong>
+                    <p>
+                      {creatingTemplate
+                        ? createSelection.length
+                        : configuration.assignments.length ||
+                          (configuration.shopifyProductId ? 1 : 0)}{" "}
+                      productos seleccionados
+                    </p>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() =>
+                        setAssignmentTarget({
+                          product: configuration,
+                          draft: !!creatingTemplate,
+                          inConfiguration: true,
+                        })
+                      }
+                    >
+                      <Package size={17} />
+                      Asignar productos
+                    </button>
+                    <small>
+                      Comparte esta área y técnica con todos los productos
+                      asignados.
+                    </small>
+                  </div>
                   <label>
                     Técnica
                     <input
@@ -835,24 +1011,9 @@ function Dashboard() {
                       ))}
                     </select>
                   </label>
-                  <label>
-                    ID de variante en Shopify
-                    <input
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="Pendiente de vincular"
-                      value={configuration.variantId}
-                      onChange={(e) =>
-                        setConfiguration({
-                          ...configuration,
-                          variantId: e.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <p className="field-hint">
-                    La variante debe incluir el precio de la personalización.
-                    Los trabajos especiales se cotizan desde revisión.
+                  <p className="field-help">
+                    Las variantes se vinculan al asignar productos. El precio de
+                    compra se mantiene en Shopify.
                   </p>
                   <label className="checkbox-label">
                     <input
@@ -865,7 +1026,7 @@ function Dashboard() {
                         })
                       }
                     />
-                    Habilitar el editor de este producto
+                    Activar personalizador
                   </label>
                   <label className="checkbox-label">
                     <input
@@ -886,7 +1047,9 @@ function Dashboard() {
                     ) : (
                       <SaveIcon />
                     )}
-                    Guardar configuración
+                    {creatingTemplate
+                      ? "Crear personalizador"
+                      : "Guardar configuración"}
                   </button>
                 </div>
               </form>

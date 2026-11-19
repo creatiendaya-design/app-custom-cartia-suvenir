@@ -113,3 +113,129 @@ test("editor is usable on a narrow screen", async ({ page }) => {
     fullPage: true,
   });
 });
+
+test("merchant creates a reusable personalizer, assigns two products and keeps variant drafts separate", async ({
+  page,
+}) => {
+  await page.goto("/app");
+  await page
+    .getByRole("button", { name: "Crear personalizador", exact: true })
+    .click();
+  const template = page
+    .getByRole("article")
+    .filter({
+      has: page.getByRole("heading", { name: "Gorra con parche", exact: true }),
+    });
+  await template
+    .getByRole("button", { name: "Usar plantilla", exact: true })
+    .click();
+  const name = `Gorras para empresas ${Date.now()}`;
+  let dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Nombre del personalizador").fill(name);
+  await dialog
+    .getByRole("button", { name: "Asignar productos", exact: true })
+    .click();
+  dialog = page.getByRole("dialog", { name: "Asignar productos", exact: true });
+  await dialog
+    .getByRole("checkbox", { name: "Asignar Gorra de empresa", exact: true })
+    .check();
+  await dialog.getByLabel("Buscar productos de Shopify").fill("eventos");
+  await dialog
+    .getByRole("checkbox", { name: "Asignar Gorra para eventos", exact: true })
+    .check();
+  await expect(dialog).toContainText("2 productos seleccionados");
+  await page.screenshot({
+    path: "output/previews/asignar-productos.png",
+    fullPage: true,
+  });
+  await dialog
+    .getByRole("button", { name: "Guardar asignación", exact: true })
+    .click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("2 productos seleccionados");
+  await dialog.getByLabel("Activar personalizador", { exact: true }).check();
+  await dialog
+    .getByRole("button", { name: "Crear personalizador", exact: true })
+    .click();
+  const row = page.getByRole("article", { name, exact: true });
+  await expect(row).toContainText("2 productos asignados");
+  await expect(row).toContainText("Activo");
+  await page.reload();
+  const preview = await row
+    .getByRole("link", { name: `Vista previa de ${name}`, exact: true })
+    .getAttribute("href");
+  const path = preview!.split("?")[0];
+  await page.screenshot({
+    path: "output/previews/personalizadores.png",
+    fullPage: true,
+  });
+  await page.goto(`${path}?variant=1201&product=1002`);
+  await expect(
+    page.getByRole("heading", { name: "Gorra para eventos", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Tu texto").fill("Evento corporativo");
+  await page
+    .getByRole("button", { name: "Guardar diseño", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Guardado");
+  await page.goto(`${path}?variant=1101&product=1001`);
+  await expect(
+    page.getByRole("heading", { name: "Gorra de empresa", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Tu texto")).not.toHaveValue(
+    "Evento corporativo",
+  );
+  await page.goto(`${path}?variant=1201&product=1002`);
+  await expect(page.getByLabel("Tu texto")).toHaveValue("Evento corporativo");
+  await page.goto("/app");
+  await row
+    .getByRole("button", { name: "Asignar productos", exact: true })
+    .click();
+  dialog = page.getByRole("dialog", { name: "Asignar productos", exact: true });
+  await dialog
+    .getByRole("button", { name: "Quitar Gorra de empresa", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Quitar Gorra para eventos", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Guardar asignación", exact: true })
+    .click();
+  await expect(row).toContainText("0 productos asignados");
+  await expect(row.getByRole("switch")).not.toBeChecked();
+});
+
+test("assignment selector works on mobile and can close with Escape", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/app");
+  const row = page.getByRole("article", {
+    name: "Gorra con parche",
+    exact: true,
+  });
+  await row
+    .getByRole("button", { name: "Asignar productos", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Asignar productos",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("checkbox", {
+      name: "Asignar Gorra de empresa",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "output/previews/asignar-productos-mobile.png",
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+});

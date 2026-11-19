@@ -51,6 +51,39 @@ function get(intent: string, query = "", capability = owner) {
   });
 }
 describe("API workflow", () => {
+  it("creates a personalizer with two verified demo product assignments and resolves either variant", async () => {
+    const product = (await repo.getProduct("demo", "cap-patch"))!;
+    const response = await post("create-personalizer", {
+      templateId: "cap-patch",
+      product: { ...product, name: "Gorras corporativas", enabled: true },
+      productIds: ["gid://shopify/Product/1001", "gid://shopify/Product/1002"],
+    });
+    expect(response.status).toBe(200);
+    const { product: created } = await response.json();
+    expect(created.assignments).toHaveLength(2);
+    const document = { ...defaultDocument(created), variantId: "1201" };
+    const saved = await post("save", { document });
+    expect(saved.status).toBe(200);
+    const { design } = await saved.json();
+    expect((await repo.getRevision("demo", design.id, 1))?.product.name).toBe(
+      "Gorra para eventos",
+    );
+    expect(
+      (await post("assign-products", { id: created.id, productIds: [] }))
+        .status,
+    ).toBe(200);
+    expect((await post("save", { document })).status).toBe(400);
+    const list = await get("shopify-products", "?query=eventos");
+    expect((await list.json()).products).toHaveLength(1);
+    expect(
+      (
+        await post("assign-products", {
+          id: created.id,
+          productIds: ["gid://shopify/Product/99999"],
+        })
+      ).status,
+    ).toBe(400);
+  });
   it("saves and retrieves the current design and protects it from another customer", async () => {
     const doc = defaultDocument((await repo.getProduct("demo", "cap-patch"))!);
     const response = await post("save", { document: doc });

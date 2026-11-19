@@ -151,5 +151,8 @@ export const seedCatalog: Product[] = definitions.map(
     areaX: shape === "cap" ? 365 : shape === "shirt" ? 410 : 350,
     areaY: shape === "cap" ? 370 : shape === "shirt" ? 320 : 360,
     areaWidth: shape === "cap" ? 300 : shape === "shirt" ? 200 : 300,
+    templateId: "",
+    assignments: [],
+    createdAt: "",
   }),
 );

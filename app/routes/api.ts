@@ -9,7 +9,19 @@ import {
   readOwner,
 } from "../lib/access.server";
 import { getRepository, type Revision } from "../lib/repository.server";
-import { documentSchema, productSchema } from "../lib/domain";
+import {
+  documentSchema,
+  productSchema,
+  resolveAssignedProduct,
+  type ProductAssignment,
+} from "../lib/domain";
+import {
+  demoCatalog,
+  demoAssignments,
+  fetchAssignments,
+  fetchCatalogPage,
+  selectedProductsSchema,
+} from "../lib/shopify-catalog.server";
 import { buildProductionPackage } from "../lib/export.server";
 import { cartSignature } from "../lib/integration.server";
 const resourceId = z.string().min(1).max(100);
@@ -128,17 +140,21 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       );
     }
     if (params.intent === "shopify-products") {
-      if (merchant.demo) return Response.json({ products: [] });
+      const search = (query.get("query") || "").slice(0, 100),
+        after = query.get("after") || undefined;
+      if (merchant.demo)
+        return Response.json({
+          products: demoCatalog.filter((p) =>
+            p.title.toLowerCase().includes(search.toLowerCase()),
+          ),
+          pageInfo: { hasNextPage: false, endCursor: null },
+        });
       const { getShopify } = await import("../lib/shopify.server");
       const { admin } = await getShopify().authenticate.admin(request);
-      const response = await admin.graphql(`#graphql
-        query PersonalizerCatalog { products(first:100) { nodes { id title variants(first:100) { nodes { id title price inventoryQuantity } } } } }`);
-      const result = await response.json();
-      if ("errors" in result && result.errors)
-        throw new Error(
-          "Shopify no pudo devolver el catálogo. Revisa los permisos.",
-        );
-      return Response.json({ products: result.data.products.nodes });
+      return Response.json(
+        await fetchCatalogPage(admin.graphql, search, after),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     throw new Response("Recurso no encontrado.", { status: 404 });
   } catch (error) {
@@ -195,7 +211,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
       if (params.intent === "save") {
         const document = documentSchema.parse(body.document);
-        const configured = await repo.getProduct(shop, document.productId);
+        const source = await repo.getProduct(shop, document.productId);
+        const configured = source
+          ? resolveAssignedProduct(source, document.variantId)
+          : null;
         if (
           shop !== "demo" &&
           (!configured ||
@@ -247,10 +266,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
         design.status !== "submitted"
       )
         throw new Error("Envía la revisión actual antes de continuar.");
-      const product = await repo.getProduct(shop, snapshot.product.id);
+      const source = await repo.getProduct(shop, snapshot.product.id);
+      const product = source
+        ? resolveAssignedProduct(source, snapshot.document.variantId)
+        : null;
       if (
         shop === "demo" ||
-        !product?.verified ||
+        !product?.enabled ||
+        !product.verified ||
         !product.variantId ||
         product.variantId !== snapshot.document.variantId
       )
@@ -280,6 +303,38 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
     }
     const merchant = await requireMerchant(request);
+    if (
+      params.intent === "create-personalizer" ||
+      params.intent === "assign-products"
+    ) {
+      const ids = selectedProductsSchema.parse(body.productIds || []);
+      let assignments: ProductAssignment[];
+      if (merchant.demo) assignments = demoAssignments(ids);
+      else if (!ids.length) assignments = [];
+      else {
+        const { getShopify } = await import("../lib/shopify.server");
+        const { admin } = await getShopify().authenticate.admin(request);
+        assignments = await fetchAssignments(admin.graphql, ids);
+      }
+      if (params.intent === "assign-products")
+        return Response.json({
+          product: await repo.assignProducts(
+            merchant.shop,
+            resourceId.parse(body.id),
+            assignments,
+          ),
+        });
+      const configuration = productSchema.parse(body.product);
+      return Response.json({
+        product: await repo.createPersonalizer(
+          merchant.shop,
+          resourceId.parse(body.templateId),
+          configuration.name,
+          configuration,
+          assignments,
+        ),
+      });
+    }
     if (params.intent === "product")
       return Response.json({
         product: await repo.updateProduct(

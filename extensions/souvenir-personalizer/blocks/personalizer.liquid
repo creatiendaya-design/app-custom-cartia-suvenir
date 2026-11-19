@@ -3,6 +3,7 @@
     data-app-url="{{ block.settings.app_url | escape }}"
     data-product-key="{{ product.metafields.souvenir.personalizer_key.value | default: block.settings.product_key | escape }}"
     data-variant-id="{{ product.selected_or_first_available_variant.id }}"
+    data-shopify-product-id="{{ product.id }}"
     data-shop="{{ shop.permanent_domain | escape }}" {{ block.shopify_attributes }}>
     <button type="button" class="sm-personalizer__open">{{ block.settings.button_label | escape }}</button>
     <p class="sm-personalizer__error" role="alert" hidden></p>
@@ -20,7 +21,7 @@
   "stylesheet": "personalizer.css",
   "settings": [
     { "type": "url", "id": "app_url", "label": "URL HTTPS de la app" },
-    { "type": "text", "id": "product_key", "label": "Clave de configuración", "default": "cap-patch", "info": "Puede sobrescribirse con el metafield souvenir.personalizer_key del producto." },
+    { "type": "text", "id": "product_key", "label": "Personalizador", "default": "auto", "info": "Usa auto para abrir el personalizador activo asignado a este producto. También admite una clave específica o el metafield souvenir.personalizer_key." },
     { "type": "text", "id": "button_label", "label": "Texto del botón", "default": "Personalizar este producto" }
   ]
 }
