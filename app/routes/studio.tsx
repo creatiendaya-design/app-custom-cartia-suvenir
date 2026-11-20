@@ -515,18 +515,30 @@ export default function Studio() {
     { id: "templates", icon: LayoutTemplate, name: "Diseños" },
     { id: "layers", icon: Layers, name: "Capas" },
   ] as const;
+  const assignedHandle = product.assignments[0]?.handle;
+  const storefrontUrl = `https://${shop}`;
+  const returnUrl = assignedHandle
+    ? `${storefrontUrl}/products/${encodeURIComponent(assignedHandle)}${product.variantId ? `?variant=${encodeURIComponent(product.variantId)}` : ""}`
+    : storefrontUrl;
   return (
     <div className="studio-app">
       <header className="topbar">
-        <Brand href={demo ? "/app" : `https://${shop}`} />
+        <Brand
+          href={demo ? "/app" : storefrontUrl}
+          target={demo ? undefined : "_top"}
+        />
         <div className="studio-header-title">
           <span>Tu idea, hecha recuerdo.</span>
           <strong>{product.name}</strong>
         </div>
         <div className="header-actions">
-          <a className="button quiet compact" href="/app">
+          <a
+            className="button quiet compact"
+            href={demo ? "/app" : returnUrl}
+            target={demo ? undefined : "_top"}
+          >
             <ArrowLeft size={17} />
-            <span>Catálogo</span>
+            <span>{demo ? "Catálogo" : "Volver al producto"}</span>
           </a>
           <button
             className="secondary compact"

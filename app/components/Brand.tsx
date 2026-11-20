@@ -1,13 +1,16 @@
 export function Brand({
   small = false,
   href = "/app",
+  target,
 }: {
   small?: boolean;
   href?: string;
+  target?: "_top";
 }) {
   return (
     <a
       href={href}
+      target={target}
       className={`brand ${small ? "small" : ""}`}
       aria-label="Souvenir Made, inicio"
     >
