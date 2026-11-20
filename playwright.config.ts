@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "e2e.spec.ts",
+  testMatch: ["e2e.spec.ts", "theme-button.spec.ts"],
   fullyParallel: false,
   workers: 1,
   use: {

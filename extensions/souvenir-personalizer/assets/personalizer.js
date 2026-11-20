@@ -18,11 +18,15 @@
         open.addEventListener("click", () => {
           error.hidden = true;
           try {
-            const base = new URL(block.dataset.appUrl);
-            if (
-              base.protocol !== "https:" ||
-              !/^[a-z0-9-]+$/.test(block.dataset.productKey)
-            )
+            // Existing theme blocks may have an empty URL setting. This app is
+            // distributed specifically to Souvenir Made; use its deployed host.
+            const defaultUrl =
+              block.dataset.shop === "souvenir-made-xbc1wrvr.myshopify.com"
+                ? "https://app-custom-cartia-suvenir.onrender.com"
+                : "";
+            const base = new URL(block.dataset.appUrl?.trim() || defaultUrl);
+            const productKey = block.dataset.productKey?.trim() || "auto";
+            if (base.protocol !== "https:" || !/^[a-z0-9-]+$/.test(productKey))
               throw new Error();
             appOrigin = base.origin;
             const variantInput =
@@ -31,16 +35,16 @@
                 ?.querySelector('form[action*="/cart/add"] [name="id"]') ||
               document.querySelector('form[action*="/cart/add"] [name="id"]');
             variantId = String(variantInput?.value || block.dataset.variantId);
-            const url = new URL(`/studio/${block.dataset.productKey}`, base);
+            const url = new URL(`/studio/${productKey}`, base);
             url.searchParams.set("shop", block.dataset.shop);
             url.searchParams.set("variant", variantId);
             if (block.dataset.shopifyProductId)
               url.searchParams.set("product", block.dataset.shopifyProductId);
             frame.src = url.href;
-            dialog.showModal();
+            if (!dialog.open) dialog.showModal();
           } catch {
             showError(
-              "El personalizador todavía no está configurado para este producto. Contacta con la tienda.",
+              "No pudimos abrir el editor. Vuelve a intentarlo o contacta con la tienda.",
             );
           }
         });

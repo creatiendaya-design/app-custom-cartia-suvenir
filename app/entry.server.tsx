@@ -4,6 +4,7 @@ import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter, type EntryContext } from "react-router";
 import { createReadableStreamFromReadable } from "@react-router/node";
 import { isbot } from "isbot";
+import { addStorefrontFrameAncestor } from "./lib/storefront-headers.server";
 export const streamTimeout = 5000;
 export default async function handleRequest(
   request: Request,
@@ -15,6 +16,7 @@ export default async function handleRequest(
     const { getShopify } = await import("./lib/shopify.server");
     getShopify().addDocumentResponseHeaders(request, headers);
   }
+  addStorefrontFrameAncestor(request, headers);
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "same-origin");
   return new Promise<Response>((resolve, reject) => {
