@@ -42,6 +42,8 @@ import {
 import { requirePublicShop } from "../lib/access.server";
 import { getRepository } from "../lib/repository.server";
 import type { Design } from "../lib/repository.server";
+import { fetchProductPrice } from "../lib/product-price.server";
+import { storefrontMessageOrigin } from "../lib/storefront";
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const shop = await requirePublicShop(request),
     repo = getRepository();
@@ -58,19 +60,45 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       "Este producto aún no está disponible para personalizar.",
       { status: 404 },
     );
+  let product: ReturnType<typeof resolveAssignedProduct>;
   try {
-    const product = resolveAssignedProduct(
-      configured,
-      variant,
-      shopifyProductId,
-    );
-    return { product, shop, demo: shop === "demo" };
+    product = resolveAssignedProduct(configured, variant, shopifyProductId);
   } catch {
     throw new Response(
       "Este producto o variante no está asignado a este personalizador.",
       { status: 404 },
     );
   }
+  if (
+    shop !== "demo" &&
+    product.purchaseMode === "product_price" &&
+    !product.variantId
+  )
+    throw new Response(
+      "Asigna un producto de Shopify antes de habilitar la compra directa.",
+      { status: 404 },
+    );
+  let price: { amount: string; currency: string } | null = null;
+  try {
+    if (product.purchaseMode === "product_price" && product.variantId) {
+      if (shop === "demo")
+        price = {
+          amount: product.assignments[0]?.variants[0]?.price || "0.00",
+          currency: "USD",
+        };
+      else {
+        const { getShopify } = await import("../lib/shopify.server");
+        const { admin } = await getShopify().unauthenticated.admin(shop);
+        price = await fetchProductPrice(admin.graphql, product);
+      }
+    }
+  } catch {
+    throw new Response(
+      "No pudimos consultar el precio actual del producto. Vuelve a intentarlo.",
+      { status: 503 },
+    );
+  }
+  return { product, shop, demo: shop === "demo", price };
 }
 type Tool = "text" | "image" | "templates" | "layers";
 const colorOptions = [
@@ -91,7 +119,8 @@ const inkOptions = [
   "#815333",
 ];
 export default function Studio() {
-  const { product, shop, demo } = useLoaderData<typeof loader>();
+  const { product, shop, demo, price } = useLoaderData<typeof loader>();
+  const directPurchase = product.purchaseMode === "product_price";
   const initial = defaultDocument(product);
   const [document, setDocument] = useState<DesignDocument>(initial),
     docRef = useRef(document);
@@ -456,7 +485,7 @@ export default function Studio() {
       });
       designRef.current = result.design;
       setDesign(result.design);
-      if (!demo && product.verified && product.variantId) {
+      if (!demo && directPurchase && product.variantId) {
         const cart = await api("cart", {
           id: saved.id,
           revision: saved.revision,
@@ -465,13 +494,27 @@ export default function Studio() {
           throw new Error(
             "Diseño enviado. Abre el personalizador desde el producto de tu tienda para añadirlo al carrito.",
           );
+        const parentOrigin = storefrontMessageOrigin(
+          window.document.referrer,
+          shop,
+        );
+        if (!parentOrigin)
+          throw new Error(
+            "No pudimos confirmar la tienda. Cierra el editor y vuelve a abrirlo desde el producto.",
+          );
         window.parent.postMessage(
           { type: "souvenir:add-to-cart", item: cart.item },
-          `https://${shop}`,
+          parentOrigin,
         );
       }
       setReviewOpen(false);
-      setMessage("Enviado al taller · pendiente de revisión");
+      setMessage(
+        directPurchase
+          ? demo
+            ? "Compra simulada · sin cobro"
+            : "Personalización confirmada · añadiendo al carrito"
+          : "Solicitud enviada al taller · pendiente de revisión y cotización",
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "No pudimos enviar el diseño.");
     } finally {
@@ -483,7 +526,7 @@ export default function Studio() {
     const receive = (event: MessageEvent) => {
       if (
         event.source === window.parent &&
-        event.origin === `https://${shop}` &&
+        storefrontMessageOrigin(event.origin, shop) === event.origin &&
         event.data?.type === "souvenir:cart-error"
       )
         setError(String(event.data.message).slice(0, 400));
@@ -1187,14 +1230,21 @@ export default function Studio() {
             )}
             <div className="quote-summary">
               <span>
-                {!demo && product.variantId && product.verified
-                  ? "Precio según variante de la tienda"
+                {directPurchase
+                  ? price
+                    ? new Intl.NumberFormat("es", {
+                        style: "currency",
+                        currency: price.currency,
+                      }).format(Number(price.amount) * document.quantity)
+                    : "Precio del producto de Shopify"
                   : "Precio por cotización"}
               </span>
               <small>
                 {demo
                   ? "Esta prueba no realiza compras"
-                  : "Te confirmaremos el importe y la entrega"}
+                  : directPurchase
+                    ? "Se aplica el precio del producto. Impuestos y envío al finalizar la compra."
+                    : "Te confirmaremos el importe y la entrega"}
               </small>
             </div>
             {ready && isLocked ? (
@@ -1287,7 +1337,11 @@ export default function Studio() {
                 </div>
                 <div>
                   <dt>Siguiente paso</dt>
-                  <dd>Revisión del taller</dd>
+                  <dd>
+                    {directPurchase
+                      ? "Carrito de compra"
+                      : "Revisión y cotización del taller"}
+                  </dd>
                 </div>
               </dl>
               <label className="checkbox-label">
@@ -1312,9 +1366,9 @@ export default function Studio() {
                 ) : (
                   <Check size={18} />
                 )}
-                {!demo && product.verified && product.variantId
-                  ? "Enviar y añadir al carrito"
-                  : "Enviar al taller"}
+                {directPurchase
+                  ? "Añadir al carrito"
+                  : "Solicitar revisión y cotización"}
               </button>
             </div>
           </section>

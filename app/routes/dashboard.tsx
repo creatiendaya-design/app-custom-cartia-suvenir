@@ -198,11 +198,16 @@ function Dashboard() {
       setBusy(false);
     }
   }
-  async function loadDetail(id: string) {
+  async function loadDetail(id: string, keepQuote = false) {
     const next = await request(`review-detail?id=${encodeURIComponent(id)}`);
     setDetail(next);
     setNote(next.design.note);
-    setQuote("");
+    if (!keepQuote)
+      setQuote(
+        next.design.quoteUnitPriceCents
+          ? (next.design.quoteUnitPriceCents / 100).toFixed(2)
+          : "",
+      );
   }
   async function review(status: "approved" | "changes_requested") {
     if (!detail) return;
@@ -266,6 +271,7 @@ function Dashboard() {
     simulated_payment: "Pago simulado en prueba",
     payment_confirmed: "Pago confirmado por Shopify",
     order_received: "Pedido recibido de Shopify",
+    quote_updated: "Precio de cotización confirmado en Shopify",
   };
   return (
     <div className="dashboard-app">
@@ -883,6 +889,29 @@ function Dashboard() {
                       }
                     />
                   </label>
+                  <label>
+                    Modo de compra
+                    <select
+                      value={configuration.purchaseMode}
+                      onChange={(event) =>
+                        setConfiguration({
+                          ...configuration,
+                          purchaseMode: event.target
+                            .value as Product["purchaseMode"],
+                        })
+                      }
+                    >
+                      <option value="quote">Revisión y cotización</option>
+                      <option value="product_price">
+                        Precio del producto de Shopify
+                      </option>
+                    </select>
+                  </label>
+                  <p className="field-help">
+                    {configuration.purchaseMode === "product_price"
+                      ? "El cliente paga el precio de la variante en Shopify. El taller revisa el diseño antes de fabricar."
+                      : "El cliente solicita una revisión. Después de aprobarla, defines el precio y generas su enlace de pago."}
+                  </p>
                   <div className="numeric-grid">
                     <label>
                       Ancho del área (mm)
@@ -1249,50 +1278,101 @@ function Dashboard() {
                     Autorizar producción
                   </button>
                 </div>
-                {!demo && detail.design.status === "approved" && (
-                  <div className="quote-form">
-                    <h3>Cotización</h3>
-                    <label>
-                      Precio unitario (moneda de Shopify)
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={quote}
-                        onChange={(e) => setQuote(e.target.value)}
-                      />
-                    </label>
-                    <button
-                      className="secondary full"
-                      disabled={busy || !Number(quote)}
-                      onClick={() =>
-                        void perform(async () => {
-                          const result = await request("quote", {
-                            id: detail.design.id,
-                            revision: detail.design.revision,
-                            unitPriceCents: Math.round(Number(quote) * 100),
-                          });
-                          await loadDetail(detail.design.id);
-                          setMessage(
-                            "Enlace de pago creado. Puedes copiarlo para compartir.",
+                {!demo &&
+                  detail.design.status === "approved" &&
+                  detail.design.payment !== "paid" &&
+                  !detail.design.orderId &&
+                  (detail.snapshot.product.purchaseMode || "quote") ===
+                    "quote" && (
+                    <div className="quote-form">
+                      <h3>Cotización</h3>
+                      <label>
+                        Precio unitario (moneda de Shopify)
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={quote}
+                          onChange={(e) => setQuote(e.target.value)}
+                        />
+                      </label>
+                      <button
+                        className="secondary full"
+                        disabled={
+                          busy ||
+                          !Number.isFinite(Number(quote)) ||
+                          Number(quote) <= 0
+                        }
+                        onClick={() => {
+                          setDetail((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  design: {
+                                    ...current.design,
+                                    invoiceUrl: undefined,
+                                  },
+                                }
+                              : null,
                           );
-                        })
-                      }
-                    >
-                      <Link2 size={17} />
-                      Crear enlace de pago
-                    </button>
-                    {detail.design.invoiceUrl && (
-                      <a
-                        href={detail.design.invoiceUrl}
-                        target="_blank"
-                        rel="noreferrer"
+                          void perform(async () => {
+                            try {
+                              await request("quote", {
+                                id: detail.design.id,
+                                revision: detail.design.revision,
+                                unitPriceCents: Math.round(Number(quote) * 100),
+                              });
+                              await loadDetail(detail.design.id);
+                              setMessage(
+                                "Precio confirmado en Shopify. Ya puedes abrir o compartir el enlace actualizado.",
+                              );
+                            } catch (failure) {
+                              await loadDetail(detail.design.id, true).catch(
+                                () => {},
+                              );
+                              throw failure;
+                            }
+                          });
+                        }}
                       >
-                        Abrir enlace de pago
-                      </a>
-                    )}
-                  </div>
-                )}
+                        <Link2 size={17} />
+                        {detail.design.quoteId
+                          ? "Actualizar precio y enlace"
+                          : "Crear enlace de pago"}
+                      </button>
+                      {detail.design.quoteUnitPriceCents && (
+                        <p className="field-help">
+                          Precio unitario confirmado:{" "}
+                          {(detail.design.quoteUnitPriceCents / 100).toFixed(2)}{" "}
+                          {detail.design.quoteCurrency} · Cantidad:{" "}
+                          {detail.snapshot.document.quantity} · Subtotal:{" "}
+                          {(
+                            (detail.design.quoteUnitPriceCents / 100) *
+                            detail.snapshot.document.quantity
+                          ).toFixed(2)}{" "}
+                          {detail.design.quoteCurrency}. Impuestos y envío se
+                          calculan en Shopify.
+                        </p>
+                      )}
+                      {detail.design.invoiceUrl &&
+                        detail.design.quoteUnitPriceCents && (
+                          <a
+                            href={detail.design.invoiceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Abrir enlace de pago
+                          </a>
+                        )}
+                      {detail.design.quoteId &&
+                        !detail.design.quoteUnitPriceCents && (
+                          <p className="field-help">
+                            Introduce el precio y actualiza el enlace para
+                            confirmarlo en Shopify.
+                          </p>
+                        )}
+                    </div>
+                  )}
                 <details className="history">
                   <summary>Historial de esta personalización</summary>
                   {detail.history.map((event, index) => (

@@ -30,6 +30,17 @@ Al quitar todos los productos, el personalizador se desactiva. Editar nombre o m
 
 Si Shopify cambia variantes o elimina productos, vuelve a guardar la asignación para refrescar sus datos. El botón de vista previa usa la primera variante asignada. La vista, el color de referencia y el área son compartidos; hay que confirmar que corresponden a todos los productos elegidos. Productos con zonas o técnicas diferentes necesitan personalizadores distintos.
 
+## Elegir precio del producto o cotización
+
+Al crear o configurar un personalizador, elige **Modo de compra**:
+
+- **Precio del producto de Shopify**: el editor consulta el precio actual de la variante y muestra el total según la cantidad. Al confirmar, el diseño se añade al carrito de la tienda y Shopify aplica su precio. La validación de medidas no cambia esta elección; la producción sigue requiriendo revisión del taller, pago y medidas verificadas.
+- **Revisión y cotización**: el cliente envía una solicitud. Tras aprobar el diseño, el taller introduce el precio unitario y genera el enlace de pago. Las configuraciones anteriores conservan este modo por defecto.
+
+Para corregir un enlace ya creado, abre el diseño en **Revisión del taller**, introduce el nuevo precio y pulsa **Actualizar precio y enlace**. Se actualiza el mismo pedido preliminar y se comprueban importe unitario, moneda, variante y cantidad en la respuesta de Shopify antes de mostrar el enlace. El panel muestra precio unitario, cantidad y subtotal; impuestos y envío se calculan en Shopify. Se deben abrir los enlaces devueltos después de actualizar, en lugar de reutilizar una pantalla de checkout que ya estaba abierta.
+
+No se permite modificar una cotización pagada o vinculada a un pedido. Las actualizaciones simultáneas del mismo diseño se bloquean mientras una está en curso. Esta función no envía correos automáticamente.
+
 ## Mostrarlo en la tienda
 
 El servidor y la extensión del tema se publican por separado. Render aloja el servidor; `npm.cmd run shopify:deploy` publica la extensión. Asignar productos en el panel no añade por sí solo el bloque a un tema.

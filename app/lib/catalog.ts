@@ -142,6 +142,7 @@ export const seedCatalog: Product[] = definitions.map(
     stage,
     minDpi: 150,
     verified: false,
+    purchaseMode: "quote",
     enabled: true,
     mask: "rect",
     shopifyProductId: "",

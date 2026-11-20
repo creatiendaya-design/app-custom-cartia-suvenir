@@ -37,6 +37,9 @@ export interface Design {
   orderId: string;
   invoiceUrl?: string;
   quoteId?: string;
+  quoteUnitPriceCents?: number;
+  quoteCurrency?: string;
+  quoteOperation?: { token: string; expiresAt: number };
 }
 export interface Asset {
   id: string;
@@ -367,7 +370,11 @@ export class Repository {
       }
       if (
         previous &&
-        (previous.payment === "paid" || previous.orderId || previous.quoteId)
+        (previous.payment === "paid" ||
+          previous.orderId ||
+          previous.quoteId ||
+          (previous.quoteOperation &&
+            previous.quoteOperation.expiresAt > Date.now()))
       )
         throw new Error(
           "Este diseño ya está vinculado a una compra o cotización. Crea una copia para editarlo.",
@@ -423,6 +430,13 @@ export class Repository {
         throw new Error("El diseño cambió. Guarda la revisión actual.");
       if (record.status === "production")
         throw new Error("Este diseño ya está en producción.");
+      if (
+        record.quoteId ||
+        (record.quoteOperation && record.quoteOperation.expiresAt > Date.now())
+      )
+        throw new Error(
+          "La revisión está vinculada a una cotización. Crea una copia para editarla.",
+        );
       const snapshot = await tx.get<Revision>(
         "revision",
         shop,
@@ -456,6 +470,8 @@ export class Repository {
         throw new Error("La revisión no está disponible para aprobar.");
       if (status === "changes_requested" && !note.trim())
         throw new Error("Indica los cambios que necesita el diseño.");
+      if (record.quoteOperation && record.quoteOperation.expiresAt > Date.now())
+        throw new Error("Hay una actualización de cotización en curso.");
       const snapshot = await tx.get<Revision>(
         "revision",
         shop,
@@ -678,6 +694,101 @@ export class Repository {
       await this.persist(tx, record);
       return record;
     }))!;
+  }
+  async beginQuote(shop: string, id: string, revision: number) {
+    return (await this.atomic(async (tx) => {
+      const record = await tx.get<Design>("design", shop, id);
+      const snapshot = await tx.get<Revision>(
+        "revision",
+        shop,
+        `${id}:${revision}`,
+      );
+      if (
+        !record ||
+        !snapshot ||
+        record.revision !== revision ||
+        record.status !== "approved"
+      )
+        throw new Error(
+          "Aprueba la revisión actual antes de crear el enlace de pago.",
+        );
+      if (record.payment === "paid" || record.orderId)
+        throw new Error(
+          "El diseño ya tiene un pago o pedido. No se puede cambiar el precio.",
+        );
+      if ((snapshot.product.purchaseMode || "quote") === "product_price")
+        throw new Error(
+          "Este diseño utiliza el precio del producto de Shopify.",
+        );
+      if (record.quoteOperation && record.quoteOperation.expiresAt > Date.now())
+        throw new Error(
+          "Hay una actualización de cotización en curso. Espera un momento.",
+        );
+      const token = randomUUID();
+      record.quoteOperation = { token, expiresAt: Date.now() + 120000 };
+      delete record.invoiceUrl;
+      delete record.quoteUnitPriceCents;
+      delete record.quoteCurrency;
+      await this.persist(tx, record);
+      return { design: record, snapshot, token };
+    }))!;
+  }
+  async finishQuote(
+    shop: string,
+    id: string,
+    token: string,
+    revision: number,
+    quoteId: string,
+    invoiceUrl: string,
+    unitPriceCents: number,
+    currency: string,
+    actor: string,
+  ) {
+    return (await this.atomic(async (tx) => {
+      const record = await tx.get<Design>("design", shop, id);
+      if (
+        !record ||
+        record.quoteOperation?.token !== token ||
+        record.quoteOperation.expiresAt < Date.now() ||
+        record.revision !== revision ||
+        record.status !== "approved" ||
+        record.payment === "paid" ||
+        record.orderId
+      )
+        throw new Error(
+          "El diseño cambió durante la cotización. Revisa el pedido antes de continuar.",
+        );
+      record.quoteId = quoteId;
+      record.invoiceUrl = invoiceUrl;
+      record.quoteUnitPriceCents = unitPriceCents;
+      record.quoteCurrency = currency;
+      delete record.quoteOperation;
+      await this.persist(tx, record);
+      await this.audit(
+        tx,
+        shop,
+        id,
+        actor,
+        "quote_updated",
+        revision,
+        `${currency} ${(unitPriceCents / 100).toFixed(2)} por unidad`,
+      );
+      return record;
+    }))!;
+  }
+  async releaseQuote(
+    shop: string,
+    id: string,
+    token: string,
+    draftId?: string,
+  ) {
+    await this.atomic(async (tx) => {
+      const record = await tx.get<Design>("design", shop, id);
+      if (!record || record.quoteOperation?.token !== token) return;
+      delete record.quoteOperation;
+      if (draftId) record.quoteId = draftId;
+      await this.persist(tx, record);
+    });
   }
   async storeSession(session: StoredSession) {
     await this.atomic(async (tx) => {

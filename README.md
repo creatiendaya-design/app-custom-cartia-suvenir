@@ -37,6 +37,7 @@ En Render, `STORAGE_PROVIDER=supabase` guarda productos, diseños, revisiones, s
 
 - Biblioteca de 16 plantillas con búsqueda y filtros. Sus medidas son ejemplos sin validar. Desde una plantilla se pueden crear varios personalizadores independientes.
 - Panel de personalizadores con búsqueda, filtros de estado, activación y asignación de uno o varios productos reales de Shopify. Un producto admite un personalizador activo; las asignaciones incluyen sus variantes y se comprueban contra la tienda en el servidor.
+- Modo de compra por personalizador: precio de la variante en Shopify o revisión y cotización. Las cotizaciones actualizan su pedido preliminar y solo muestran el enlace después de verificar el precio aplicado por Shopify.
 - Imagen propia del lienzo por personalizador: PNG/JPEG/WebP, encajar o cubrir, sustitución y restauración de la plantilla. Se guarda en Supabase; las revisiones anteriores conservan su imagen de referencia y el arte de impresión excluye el fondo.
 - Editor frontal: texto, tipografía, colores de tinta, PNG/JPEG, movimiento, escala proporcional, giro, capas, duplicación, centrado y deshacer/rehacer.
 - Guardado automático, recuperación y revisiones inmutables. Un diseño asociado a pago/cotización requiere una copia para editar.

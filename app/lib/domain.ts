@@ -86,6 +86,7 @@ export const productSchema = z.object({
   heightMm: z.number().min(5).max(600),
   minDpi: z.number().int().min(72).max(600),
   verified: z.boolean(),
+  purchaseMode: z.enum(["quote", "product_price"]).default("quote"),
   enabled: z.boolean(),
   mask: z.enum(["rect", "ellipse"]),
   stage: z.number().int().min(1).max(4),

@@ -24,6 +24,7 @@ import {
 } from "../lib/shopify-catalog.server";
 import { buildProductionPackage } from "../lib/export.server";
 import { cartSignature } from "../lib/integration.server";
+import { createOrUpdateQuote } from "../lib/quotes.server";
 const resourceId = z.string().min(1).max(100);
 const revisionSchema = z.number().int().positive();
 async function assetsFor(shop: string, snapshot: Revision) {
@@ -289,12 +290,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       if (
         shop === "demo" ||
         !product?.enabled ||
-        !product.verified ||
+        product.purchaseMode !== "product_price" ||
         !product.variantId ||
         product.variantId !== snapshot.document.variantId
       )
         throw new Error(
-          "Este producto se gestiona por cotización hasta validar su configuración en Shopify.",
+          "Este producto está configurado para revisión y cotización.",
         );
       if (!process.env.SHOPIFY_API_SECRET)
         throw new Error("Falta configurar Shopify.");
@@ -446,86 +447,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
         .min(1)
         .max(100000000)
         .parse(body.unitPriceCents);
-      const design = await repo.getDesign(merchant.shop, id),
-        snapshot = await repo.getRevision(merchant.shop, id, revision);
-      if (
-        !design ||
-        !snapshot ||
-        design.revision !== revision ||
-        design.status !== "approved"
-      )
-        throw new Error("Aprueba el diseño antes de crear el enlace de pago.");
-      if (design.invoiceUrl)
-        return Response.json({ invoiceUrl: design.invoiceUrl });
       const { getShopify } = await import("../lib/shopify.server");
       const { admin } = await getShopify().authenticate.admin(request);
-      const shopResult = await (
-        await admin.graphql(`query { shop { currencyCode } }`)
-      ).json();
-      const currency = shopResult.data?.shop?.currencyCode;
-      if (!currency)
-        throw new Error("No se pudo consultar la moneda de la tienda.");
-      const { variantId, quantity } = snapshot.document;
-      const attributes = [
-        { key: "_sm_design_id", value: id },
-        { key: "_sm_revision", value: String(revision) },
-        {
-          key: "_sm_signature",
-          value: cartSignature(
-            id,
-            revision,
-            variantId,
-            quantity,
-            process.env.SHOPIFY_API_SECRET!,
-          ),
-        },
-      ];
-      if (!variantId)
-        throw new Error(
-          "Vincula una variante real de Shopify antes de crear la cotización.",
-        );
-      const response = await admin.graphql(
-        `#graphql
-        mutation PersonalizerQuote($input:DraftOrderInput!) { draftOrderCreate(input:$input) { draftOrder { id invoiceUrl } userErrors { message } } }`,
-        {
-          variables: {
-            input: {
-              note: `Souvenir Made ${id} r${revision}`,
-              tags: ["souvenir-personalizado"],
-              lineItems: [
-                {
-                  variantId: `gid://shopify/ProductVariant/${variantId}`,
-                  quantity,
-                  priceOverride: {
-                    amount: (unitPrice / 100).toFixed(2),
-                    currencyCode: currency,
-                  },
-                  customAttributes: attributes,
-                },
-              ],
-            },
-          },
-        },
-      );
-      const result = await response.json(),
-        draft = result.data?.draftOrderCreate;
-      if (
-        ("errors" in result && result.errors) ||
-        draft?.userErrors?.length ||
-        !draft?.draftOrder?.invoiceUrl
-      )
-        throw new Error(
-          draft?.userErrors
-            ?.map((e: { message: string }) => e.message)
-            .join(" ") || "No se pudo crear el enlace de pago.",
-        );
-      await repo.attachQuote(
+      const design = await createOrUpdateQuote(
+        repo,
+        admin.graphql,
         merchant.shop,
         id,
-        draft.draftOrder.id,
-        draft.draftOrder.invoiceUrl,
+        revision,
+        unitPrice,
+        merchant.actor,
+        process.env.SHOPIFY_API_SECRET || "",
       );
-      return Response.json({ invoiceUrl: draft.draftOrder.invoiceUrl });
+      return Response.json({
+        invoiceUrl: design.invoiceUrl,
+        quoteUnitPriceCents: design.quoteUnitPriceCents,
+        quoteCurrency: design.quoteCurrency,
+      });
     }
     throw new Response("Acción no encontrada.", { status: 404 });
   } catch (error) {

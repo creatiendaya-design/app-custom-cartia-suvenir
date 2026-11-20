@@ -149,6 +149,77 @@ test("Shopify launch opens the dashboard and retains its embedded context", asyn
   ).toBeVisible();
 });
 
+test("merchant chooses Shopify pricing and the customer sees the matching purchase flow", async ({
+  page,
+}) => {
+  await page.goto("/app?tab=catalog");
+  await page
+    .getByRole("article")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "Termo personalizado",
+        exact: true,
+      }),
+    })
+    .getByRole("button", { name: "Usar plantilla", exact: true })
+    .click();
+  let dialog = page.getByRole("dialog");
+  await dialog
+    .getByLabel("Nombre del personalizador")
+    .fill("Termo con precio Shopify");
+  await expect(dialog.getByLabel("Modo de compra")).toHaveValue("quote");
+  await dialog.getByLabel("Modo de compra").selectOption("product_price");
+  await dialog
+    .getByRole("button", { name: "Asignar productos", exact: true })
+    .click();
+  await page
+    .getByRole("checkbox", { name: "Asignar Termo de acero", exact: true })
+    .check();
+  await page
+    .getByRole("button", { name: "Guardar asignación", exact: true })
+    .click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Activar personalizador", { exact: true }).check();
+  await dialog
+    .getByRole("button", { name: "Crear personalizador", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  const row = page.getByRole("article", {
+    name: "Termo con precio Shopify",
+    exact: true,
+  });
+  await row
+    .getByRole("button", { name: "Configurar Termo con precio Shopify" })
+    .click();
+  await expect(dialog.getByLabel("Modo de compra")).toHaveValue(
+    "product_price",
+  );
+  await expect(
+    dialog.getByLabel("El taller confirmó estas medidas y esta técnica"),
+  ).not.toBeChecked();
+  await dialog.getByRole("button", { name: "Cerrar configuración" }).click();
+  const path = (await row
+    .getByRole("link", { name: "Vista previa de Termo con precio Shopify" })
+    .getAttribute("href"))!;
+  await page.goto(path);
+  await page.getByLabel("Cantidad", { exact: true }).fill("3");
+  await expect(page.locator(".quote-summary")).toContainText("60");
+  await expect(page.locator(".quote-summary")).not.toContainText(
+    "Precio por cotización",
+  );
+  await page
+    .getByRole("button", { name: "Revisar diseño", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("Carrito de compra");
+  await page
+    .getByLabel("Confirmo que el texto y la distribución son correctos")
+    .check();
+  await page
+    .getByRole("button", { name: "Añadir al carrito", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Compra simulada");
+});
+
 test("customer edits, saves, reloads and submits a design for workshop review", async ({
   page,
 }) => {
@@ -172,9 +243,12 @@ test("customer edits, saves, reloads and submits a design for workshop review", 
     .getByLabel("Confirmo que el texto y la distribución son correctos")
     .check();
   await page
-    .getByRole("button", { name: "Enviar al taller", exact: true })
+    .getByRole("button", {
+      name: "Solicitar revisión y cotización",
+      exact: true,
+    })
     .click();
-  await expect(page.getByRole("status")).toContainText("Enviado al taller");
+  await expect(page.getByRole("status")).toContainText("Solicitud enviada al taller");
   await page.goto("/app?tab=designs");
   await expect(
     page.getByRole("cell", { name: "En revisión", exact: true }).first(),
