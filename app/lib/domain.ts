@@ -92,6 +92,15 @@ export const productSchema = z.object({
   shopifyProductId: z.string().max(100),
   variantId: z.string().regex(/^$|^\d+$/),
   image: z.string().regex(/^$|^\/catalog\/[a-z0-9.-]+$/),
+  canvas: z
+    .object({
+      assetId: z.string().uuid(),
+      shop: z.string().regex(/^(?:demo|[a-z0-9][a-z0-9-]*\.myshopify\.com)$/),
+      name: z.string().max(120),
+      fit: z.enum(["contain", "cover"]).default("contain"),
+    })
+    .nullable()
+    .default(null),
   baseColor: z
     .string()
     .regex(/^#[\da-f]{6}$/i)

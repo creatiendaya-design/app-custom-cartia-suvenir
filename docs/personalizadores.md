@@ -14,6 +14,14 @@ También puedes crear primero y asignar después desde la lista. Se admiten hast
 
 La lista muestra el estado, productos asignados, búsqueda, filtros, configuración y vista previa. Los contadores se calculan con las asignaciones guardadas; los productos se cuentan una sola vez aunque aparezcan en configuraciones inactivas distintas. La demostración local muestra productos de prueba identificados como tales.
 
+## Cambiar la imagen del lienzo
+
+En **Personalizadores → Configurar**, o al crear uno desde una plantilla, pulsa **Subir imagen del lienzo** junto a la vista previa. Se admiten PNG, JPG y WebP de hasta 8 MB y 16 millones de píxeles. La imagen se orienta automáticamente, se normaliza a PNG y se reduce a un máximo de 2000 píxeles por lado.
+
+Puedes **encajar la imagen completa**, **cubrir todo el lienzo**, cambiarla o **restaurar la imagen de plantilla**. Ajusta la posición y las medidas del área de personalización y pulsa **Guardar configuración**. Cambiar la imagen o su ajuste desmarca la validación del taller; confirma de nuevo las medidas cuando corresponda.
+
+La foto se comparte entre los productos de ese personalizador. El cliente puede añadir su texto o logo sobre ella. La foto base no se incluye en el SVG/PNG de impresión; las revisiones guardadas conservan su referencia anterior. Solo el comerciante puede subir imágenes base; los archivos del cliente no se pueden consultar mediante el enlace de vista previa del lienzo. Las fotos base son recursos de presentación públicos a través de su URL de imagen.
+
 ## Activación y cambios
 
 Un producto puede estar en varios personalizadores inactivos, pero solo uno puede estar activo para ese producto. La comprobación se realiza en una transacción y protege activaciones simultáneas. Para cambiar el personalizador de un producto, desactiva primero el anterior o quita su asignación.

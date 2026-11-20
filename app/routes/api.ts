@@ -86,6 +86,22 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
     const repo = getRepository(),
       query = new URL(request.url).searchParams;
+    if (params.intent === "canvas") {
+      const shop = await requirePublicShop(request);
+      const id = z.string().uuid().parse(query.get("id"));
+      const metadata = await repo.getAssetMetadata(shop, id);
+      if (metadata?.purpose !== "canvas")
+        throw new Response("Imagen no encontrada.", { status: 404 });
+      const asset = await repo.getAsset(shop, id);
+      if (!asset) throw new Response("Imagen no encontrada.", { status: 404 });
+      return new Response(Buffer.from(asset.data.split(",")[1], "base64"), {
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=31536000, immutable",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
     if (params.intent === "design") {
       const shop = await requirePublicShop(request),
         owner = readOwner(request),
@@ -303,6 +319,54 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
     }
     const merchant = await requireMerchant(request);
+    if (params.intent === "canvas-upload") {
+      const data = z
+        .string()
+        .max(11000000)
+        .regex(/^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/)
+        .parse(body.data);
+      const original = Buffer.from(data.split(",")[1], "base64");
+      if (original.length > 8000000) throw new Error("Máximo 8 MB por imagen.");
+      const pipeline = sharp(original, {
+        limitInputPixels: 16000000,
+        failOn: "error",
+      });
+      const metadata = await pipeline.metadata();
+      if (!["png", "jpeg", "webp"].includes(metadata.format || ""))
+        throw new Error("Sube una imagen PNG, JPEG o WebP válida.");
+      const { data: normalized, info } = await pipeline
+        .rotate()
+        .resize(2000, 2000, { fit: "inside", withoutEnlargement: true })
+        .png()
+        .toBuffer({ resolveWithObject: true });
+      if (normalized.length > 16000000)
+        throw new Error(
+          "La imagen procesada es demasiado grande. Reduce su resolución.",
+        );
+      const asset = {
+        id: randomUUID(),
+        shop: merchant.shop,
+        owner: merchant.actor,
+        purpose: "canvas" as const,
+        name: z.string().min(1).max(120).parse(body.name),
+        width: info.width,
+        height: info.height,
+        data: `data:image/png;base64,${normalized.toString("base64")}`,
+      };
+      await repo.putAsset(asset);
+      return Response.json(
+        {
+          canvas: {
+            assetId: asset.id,
+            shop: merchant.shop,
+            name: asset.name,
+            fit: "contain",
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     if (
       params.intent === "create-personalizer" ||
       params.intent === "assign-products"

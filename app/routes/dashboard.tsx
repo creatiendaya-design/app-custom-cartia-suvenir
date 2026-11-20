@@ -33,6 +33,7 @@ import { Brand } from "../components/Brand";
 import { ProductScene, type PreviewAsset } from "../components/ProductScene";
 import { PersonalizerList } from "../components/PersonalizerList";
 import { ProductPicker } from "../components/ProductPicker";
+import { CanvasImagePicker } from "../components/CanvasImagePicker";
 import { seedCatalog } from "../lib/catalog";
 import type { CatalogProduct } from "../lib/shopify-catalog.server";
 import { defaultDocument, statusLabels, type Product } from "../lib/domain";
@@ -101,6 +102,7 @@ function Dashboard() {
   const [configuration, setConfiguration] = useState<Product | null>(null),
     [detail, setDetail] = useState<ReviewDetail | null>(null);
   const [creatingTemplate, setCreatingTemplate] = useState("");
+  const [canvasBusy, setCanvasBusy] = useState(false);
   const [createSelection, setCreateSelection] = useState<CatalogProduct[]>([]);
   const [assignmentTarget, setAssignmentTarget] = useState<{
     product: Product;
@@ -122,11 +124,13 @@ function Dashboard() {
       (stage === "all" || p.stage === Number(stage)),
   );
   function editConfiguration(product: Product) {
+    setCanvasBusy(false);
     setCreatingTemplate("");
     setCreateSelection([]);
     setConfiguration({ ...product });
   }
   function useTemplate(product: Product) {
+    setCanvasBusy(false);
     setCreatingTemplate(product.id);
     setCreateSelection([]);
     setConfiguration({ ...product, enabled: false, verified: false });
@@ -746,7 +750,7 @@ function Dashboard() {
       {configuration && !assignmentTarget && (
         <div
           className="modal-backdrop"
-          onClick={() => !busy && setConfiguration(null)}
+          onClick={() => !busy && !canvasBusy && setConfiguration(null)}
         >
           <section
             className="modal config-modal"
@@ -767,6 +771,7 @@ function Dashboard() {
               <button
                 className="icon-button"
                 aria-label="Cerrar configuración"
+                disabled={busy || canvasBusy}
                 onClick={() => setConfiguration(null)}
               >
                 <X size={20} />
@@ -779,14 +784,22 @@ function Dashboard() {
                   document={defaultDocument(configuration)}
                   guides
                 />
-                <p>
-                  Vista ilustrativa. Ajusta la zona sobre la imagen y confirma
-                  sus medidas reales.
-                </p>
+                <CanvasImagePicker
+                  key={`${creatingTemplate}:${configuration.id}`}
+                  value={configuration.canvas}
+                  disabled={busy}
+                  onBusyChange={setCanvasBusy}
+                  onChange={(canvas) =>
+                    setConfiguration((current) =>
+                      current ? { ...current, canvas, verified: false } : null,
+                    )
+                  }
+                />
               </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (canvasBusy || busy) return;
                   void perform(async () => {
                     await request(
                       creatingTemplate ? "create-personalizer" : "product",
@@ -1041,7 +1054,10 @@ function Dashboard() {
                     />
                     El taller confirmó estas medidas y esta técnica
                   </label>
-                  <button className="primary full" disabled={busy}>
+                  <button
+                    className="primary full"
+                    disabled={busy || canvasBusy}
+                  >
                     {busy ? (
                       <LoaderCircle className="spin" size={18} />
                     ) : (

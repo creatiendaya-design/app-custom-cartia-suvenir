@@ -148,6 +148,7 @@ export const seedCatalog: Product[] = definitions.map(
     variantId: "",
     baseColor: "#e6d6bc",
     image: shape === "cap" ? "/catalog/cap-1.jpg" : "",
+    canvas: null,
     areaX: shape === "cap" ? 365 : shape === "shirt" ? 410 : 350,
     areaY: shape === "cap" ? 370 : shape === "shirt" ? 320 : 360,
     areaWidth: shape === "cap" ? 300 : shape === "shirt" ? 200 : 300,

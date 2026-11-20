@@ -37,6 +37,7 @@ En Render, `STORAGE_PROVIDER=supabase` guarda productos, diseños, revisiones, s
 
 - Biblioteca de 16 plantillas con búsqueda y filtros. Sus medidas son ejemplos sin validar. Desde una plantilla se pueden crear varios personalizadores independientes.
 - Panel de personalizadores con búsqueda, filtros de estado, activación y asignación de uno o varios productos reales de Shopify. Un producto admite un personalizador activo; las asignaciones incluyen sus variantes y se comprueban contra la tienda en el servidor.
+- Imagen propia del lienzo por personalizador: PNG/JPEG/WebP, encajar o cubrir, sustitución y restauración de la plantilla. Se guarda en Supabase; las revisiones anteriores conservan su imagen de referencia y el arte de impresión excluye el fondo.
 - Editor frontal: texto, tipografía, colores de tinta, PNG/JPEG, movimiento, escala proporcional, giro, capas, duplicación, centrado y deshacer/rehacer.
 - Guardado automático, recuperación y revisiones inmutables. Un diseño asociado a pago/cotización requiere una copia para editar.
 - Validación de límites y resolución efectiva de imágenes. Normalización de cargas con Sharp; límites de formato, peso y píxeles.
@@ -80,7 +81,7 @@ No pegar el secreto en `.env.example` ni subir `.env` al repositorio. `SHOPIFY_A
 
 Esta es una base funcional para probar el flujo, **no una instalación ya operativa en Shopify ni la implementación completa de todas las etapas del informe**.
 
-- Una cara/área por configuración; aún faltan múltiples caras, sangrado avanzado, recorte de imágenes, subida de fotos propias de producto y biblioteca gráfica ampliada.
+- Una cara/área por configuración; aún faltan múltiples caras, sangrado avanzado, recorte libre de imágenes y biblioteca gráfica ampliada.
 - El SVG mantiene texto editable; no lo convierte a contornos. Comprobar las fuentes en el equipo del taller. El PNG es sRGB y no configura RIP, blanco, separación de colores ni espejo.
 - El ZIP no contiene ponchado de bordado ni instrucciones de máquina láser. Esos procesos requieren preparación y verificación del taller.
 - Los originales almacenados son imágenes normalizadas a PNG; no se conserva el binario original previo a normalizar.

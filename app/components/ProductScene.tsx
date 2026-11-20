@@ -87,6 +87,19 @@ export function ProductBase({
     "#c83c3c": "cap-2.jpg",
     "#d4e4ec": "cap-0.jpg",
   };
+  if (product.canvas)
+    return (
+      <image
+        href={`/api/canvas?shop=${encodeURIComponent(product.canvas.shop)}&id=${product.canvas.assetId}`}
+        x="0"
+        y="0"
+        width="1000"
+        height="900"
+        preserveAspectRatio={
+          product.canvas.fit === "cover" ? "xMidYMid slice" : "xMidYMid meet"
+        }
+      />
+    );
   if (product.shape === "cap")
     return (
       <image
@@ -294,7 +307,7 @@ export function ProductScene({
       <g
         transform={`translate(${product.areaX} ${product.areaY}) scale(${product.areaWidth / 1000})`}
       >
-        {product.id === "cap-patch" && (
+        {product.id === "cap-patch" && !product.canvas && (
           <rect
             x="-25"
             y="-25"

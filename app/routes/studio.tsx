@@ -987,19 +987,20 @@ export default function Studio() {
                 <g
                   transform={`translate(${product.areaX} ${product.areaY}) scale(${product.areaWidth / 1000})`}
                 >
-                  {(product.id === "cap-patch" ||
-                    product.templateId === "cap-patch") && (
-                    <rect
-                      x="-25"
-                      y="-25"
-                      width="1050"
-                      height={height + 50}
-                      rx="35"
-                      fill="#b98d54"
-                      stroke="#8d6438"
-                      strokeWidth="8"
-                    />
-                  )}
+                  {!product.canvas &&
+                    (product.id === "cap-patch" ||
+                      product.templateId === "cap-patch") && (
+                      <rect
+                        x="-25"
+                        y="-25"
+                        width="1050"
+                        height={height + 50}
+                        rx="35"
+                        fill="#b98d54"
+                        stroke="#8d6438"
+                        strokeWidth="8"
+                      />
+                    )}
                   <g clipPath="url(#editor-print-area)">
                     <Artwork document={document} assets={assets} />
                   </g>

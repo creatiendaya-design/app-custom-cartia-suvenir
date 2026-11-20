@@ -1,10 +1,127 @@
 import { test, expect } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import sharp from "sharp";
 
 test.beforeEach(async ({ page }) => {
   page.on("pageerror", (error) =>
     console.error("Browser error:", error.message),
   );
+});
+
+test("merchant uploads, replaces and restores a canvas photograph across dashboard and customer editor", async ({
+  page,
+}) => {
+  const first = await sharp({
+    create: { width: 800, height: 600, channels: 3, background: "#e1b365" },
+  })
+    .png()
+    .toBuffer();
+  const second = await sharp({
+    create: { width: 600, height: 800, channels: 3, background: "#528096" },
+  })
+    .webp()
+    .toBuffer();
+  await page.goto("/app?tab=catalog");
+  await page
+    .getByRole("article")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "Termo personalizado",
+        exact: true,
+      }),
+    })
+    .getByRole("button", { name: "Usar plantilla", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("button", { name: "Subir imagen del lienzo" }),
+  ).toBeInViewport();
+  await dialog
+    .getByLabel("Nombre del personalizador")
+    .fill("Termo con fotografía");
+  await dialog.getByLabel("Imagen del lienzo", { exact: true }).setInputFiles({
+    name: "mi-termo.png",
+    mimeType: "image/png",
+    buffer: first,
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Cambiar imagen del lienzo" }),
+  ).toBeEnabled();
+  const photo = dialog.locator("svg.product-scene > image");
+  await expect(photo).toHaveAttribute("href", /\/api\/canvas\?/);
+  const firstUrl = (await photo.getAttribute("href"))!;
+  expect((await page.request.get(firstUrl)).status()).toBe(200);
+  await dialog.getByLabel("Ajuste de la imagen").selectOption("cover");
+  await expect(photo).toHaveAttribute("preserveAspectRatio", "xMidYMid slice");
+  await dialog.getByLabel("Activar personalizador", { exact: true }).check();
+  await dialog
+    .getByRole("button", { name: "Crear personalizador", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  const row = page.getByRole("article", {
+    name: "Termo con fotografía",
+    exact: true,
+  });
+  const studioPath = (await row
+    .getByRole("link", { name: "Vista previa de Termo con fotografía" })
+    .getAttribute("href"))!;
+  await page.goto(studioPath);
+  await expect(page.locator("svg.interactive > image")).toHaveAttribute(
+    "href",
+    firstUrl,
+  );
+  await page.goto("/app");
+  await row
+    .getByRole("button", { name: "Configurar Termo con fotografía" })
+    .click();
+  await expect(dialog.getByLabel("Ajuste de la imagen")).toHaveValue("cover");
+  await dialog.getByLabel("Imagen del lienzo", { exact: true }).setInputFiles({
+    name: "otro-termo.webp",
+    mimeType: "image/webp",
+    buffer: second,
+  });
+  await expect(
+    dialog.getByText("otro-termo.webp", { exact: true }),
+  ).toBeVisible();
+  const secondUrl = (await photo.getAttribute("href"))!;
+  expect(secondUrl).not.toBe(firstUrl);
+  await dialog
+    .getByRole("button", { name: "Guardar configuración", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await page.reload();
+  await row
+    .getByRole("button", { name: "Configurar Termo con fotografía" })
+    .click();
+  await expect(photo).toHaveAttribute("href", secondUrl);
+  mkdirSync("output/previews", { recursive: true });
+  await page.screenshot({
+    path: "output/previews/lienzo-propio.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    dialog.getByRole("button", { name: "Cambiar imagen del lienzo" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await dialog
+    .getByRole("button", { name: "Restaurar imagen de plantilla" })
+    .click();
+  await expect(photo).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Guardar configuración", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await page.goto(studioPath);
+  await expect(
+    page.getByRole("heading", { name: "Termo con fotografía", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("svg.interactive > image")).toHaveCount(0);
+  expect((await page.request.get(firstUrl)).status()).toBe(200);
 });
 
 test("Shopify launch opens the dashboard and retains its embedded context", async ({
@@ -121,11 +238,9 @@ test("merchant creates a reusable personalizer, assigns two products and keeps v
   await page
     .getByRole("button", { name: "Crear personalizador", exact: true })
     .click();
-  const template = page
-    .getByRole("article")
-    .filter({
-      has: page.getByRole("heading", { name: "Gorra con parche", exact: true }),
-    });
+  const template = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: "Gorra con parche", exact: true }),
+  });
   await template
     .getByRole("button", { name: "Usar plantilla", exact: true })
     .click();

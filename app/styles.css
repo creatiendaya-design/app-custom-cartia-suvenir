@@ -1373,10 +1373,39 @@ small {
 .configuration-preview > .product-scene {
   background: #fff;
   border-radius: 10px;
+  height: 260px;
 }
 .configuration-preview p {
   font-size: 0.8125rem;
   margin: 20px 0 0;
+}
+.canvas-image-picker {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 0.8125rem;
+}
+.canvas-image-picker > strong {
+  color: var(--ink);
+}
+.canvas-image-picker > span,
+.canvas-image-picker > small {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.canvas-image-picker label {
+  display: grid;
+  gap: 7px;
+  font-weight: 600;
+}
+.canvas-image-name {
+  overflow-wrap: anywhere;
+}
+.canvas-image-picker .canvas-image-error {
+  color: #ad2535;
+  margin: 0;
 }
 .config-layout form {
   padding: 25px 30px;

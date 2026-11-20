@@ -46,6 +46,7 @@ export interface Asset {
   width: number;
   height: number;
   data: string;
+  purpose?: "canvas";
 }
 export interface AssetMetadata extends Omit<Asset, "data"> {
   bytes: number;
@@ -145,6 +146,7 @@ export class Repository {
     return (await this.atomic(async (tx) => {
       const existing = await tx.get<Product>("product", shop, product.id);
       if (!existing) throw new Error("Producto no encontrado.");
+      await this.validateCanvas(tx, shop, product);
       const updated = {
         ...product,
         templateId:
@@ -163,6 +165,18 @@ export class Repository {
       await tx.set("product", shop, product.id, updated);
       return updated;
     }))!;
+  }
+  private async validateCanvas(tx: UnitOfWork, shop: string, product: Product) {
+    if (!product.canvas) return;
+    const asset = await tx.get<AssetMetadata>(
+      "asset",
+      shop,
+      product.canvas.assetId,
+    );
+    if (product.canvas.shop !== shop || asset?.purpose !== "canvas")
+      throw new Error(
+        "La imagen del lienzo no pertenece a esta tienda o no es una imagen base válida.",
+      );
   }
   private assignedIds(product: Product) {
     return product.assignments.length
@@ -244,6 +258,7 @@ export class Repository {
       assignments: assignments.map((a) => assignmentSchema.parse(a)),
     });
     await this.atomic(async (tx) => {
+      await this.validateCanvas(tx, shop, product);
       await this.syncProductClaims(
         tx,
         shop,
